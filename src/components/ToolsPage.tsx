@@ -3,12 +3,11 @@ import {
   Loader2,
   Download,
   Trash2,
-  CheckCircle2,
-  XCircle,
   ArrowRight,
   Stamp,
   Copy,
   Check,
+  ImageOff,
 } from "lucide-react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import DropZone from "./DropZone";
@@ -65,6 +64,36 @@ const FORMAT_OPTIONS: { value: OutputFormat; label: string }[] = [
   { value: "png", label: "PNG" },
   { value: "webp", label: "WebP" },
 ];
+
+function CompressThumbnail({ path, busy }: { path: string; busy: boolean }) {
+  const [failed, setFailed] = useState(false);
+  const src = convertFileSrc(path);
+
+  if (busy && !path) {
+    return (
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-zinc-100 dark:bg-zinc-800">
+        <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
+      </div>
+    );
+  }
+
+  if (failed) {
+    return (
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-zinc-400 dark:bg-zinc-800">
+        <ImageOff className="h-5 w-5" />
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt=""
+      onError={() => setFailed(true)}
+      className="h-10 w-10 shrink-0 rounded-lg object-cover bg-zinc-100 dark:bg-zinc-800"
+    />
+  );
+}
 
 export default function ToolsPage({ autoSave = false, onSendToWatermark, active = true }: Props) {
   const [items, setItems] = useState<CompressItem[]>([]);
@@ -321,26 +350,8 @@ export default function ToolsPage({ autoSave = false, onSendToWatermark, active 
                 key={item.id}
                 className="group flex items-center gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2.5 transition hover:shadow-sm dark:border-zinc-700/60 dark:bg-zinc-900"
               >
-                {/* Status icon */}
-                <div
-                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
-                    item.status === "done"
-                      ? "bg-emerald-50 text-emerald-500 dark:bg-emerald-900/20"
-                      : item.status === "error"
-                        ? "bg-red-50 text-red-400 dark:bg-red-900/20"
-                        : "bg-zinc-100 text-zinc-400 dark:bg-zinc-800"
-                  }`}
-                >
-                  {busy ? (
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                  ) : item.status === "done" ? (
-                    <CheckCircle2 className="h-5 w-5" />
-                  ) : item.status === "error" ? (
-                    <XCircle className="h-5 w-5" />
-                  ) : (
-                    <Download className="h-5 w-5" />
-                  )}
-                </div>
+                {/* Thumbnail */}
+                <CompressThumbnail path={item.path} busy={busy} />
 
                 {/* Info */}
                 <div className="min-w-0 flex-1">

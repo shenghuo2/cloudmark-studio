@@ -10,7 +10,9 @@ import {
   Download,
   CloudOff,
   Check,
+  ImageOff,
 } from "lucide-react";
+import { convertFileSrc } from "@tauri-apps/api/core";
 
 export type ImageStatus =
   | "pending"
@@ -104,6 +106,35 @@ function IconBtn({
   );
 }
 
+function Thumbnail({ src, busy }: { src?: string; busy: boolean }) {
+  const [failed, setFailed] = useLocalState(false);
+
+  if (busy && !src) {
+    return (
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-zinc-100 dark:bg-zinc-800">
+        <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />
+      </div>
+    );
+  }
+
+  if (!src || failed) {
+    return (
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-zinc-400 dark:bg-zinc-800">
+        <ImageOff className="h-5 w-5" />
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt=""
+      onError={() => setFailed(true)}
+      className="h-10 w-10 shrink-0 rounded-lg object-cover bg-zinc-100 dark:bg-zinc-800"
+    />
+  );
+}
+
 export default function ImageCard({
   image,
   onProcess,
@@ -165,10 +196,11 @@ export default function ImageCard({
 
   return (
     <div className="group flex items-center gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2.5 transition hover:shadow-sm dark:border-zinc-700/60 dark:bg-zinc-900">
-      {/* Icon */}
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-zinc-400 dark:bg-zinc-800">
-        <Stamp className="h-5 w-5" />
-      </div>
+      {/* Thumbnail */}
+      <Thumbnail
+        src={image.watermarkedUrl || (image.path && !image.path.startsWith("http") ? convertFileSrc(image.path) : image.path)}
+        busy={busy}
+      />
 
       {/* Info */}
       <div className="min-w-0 flex-1">

@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from "react";
-import { ScanSearch, Loader2 } from "lucide-react";
+import { ScanSearch, Loader2, ImageOff } from "lucide-react";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import DropZone from "./DropZone";
 import { uploadToOss, decodeWatermark, getDecodeResult, downloadUrlToTemp, deleteFromOss } from "../lib/tauri";
 import { pushHistory } from "./HistoryPage";
@@ -12,6 +13,7 @@ interface DecodeItem {
   error?: string;
   result?: string;
   objectKey?: string;
+  progress?: number;
 }
 
 let nextId = 0;
@@ -20,6 +22,36 @@ interface Props {
   ossConfigured: boolean;
   active?: boolean;
   autoDelete?: boolean;
+}
+
+function DecodeThumbnail({ path, busy }: { path: string; busy: boolean }) {
+  const [failed, setFailed] = useState(false);
+  const src = path.startsWith("http") ? path : convertFileSrc(path);
+
+  if (busy && !path) {
+    return (
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-purple-50 dark:bg-purple-900/20">
+        <Loader2 className="h-4 w-4 animate-spin text-purple-400" />
+      </div>
+    );
+  }
+
+  if (failed) {
+    return (
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-purple-50 text-purple-400 dark:bg-purple-900/20">
+        <ImageOff className="h-5 w-5" />
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt=""
+      onError={() => setFailed(true)}
+      className="h-10 w-10 shrink-0 rounded-lg object-cover bg-purple-50 dark:bg-purple-900/20"
+    />
+  );
 }
 
 export default function DecodePage({ ossConfigured, active = true, autoDelete = true }: Props) {
@@ -106,8 +138,10 @@ export default function DecodePage({ ossConfigured, active = true, autoDelete = 
         const submit = await decodeWatermark(objectKey, strength);
 
         // Poll for result (max 60s)
-        for (let i = 0; i < 30; i++) {
+        const maxPolls = 30;
+        for (let i = 0; i < maxPolls; i++) {
           await new Promise((r) => setTimeout(r, 2000));
+          updateItem(id, { progress: Math.round(((i + 1) / maxPolls) * 100) });
           const result = await getDecodeResult(submit.task_id);
           if (result.status === "Succeeded") {
             const content = result.content ?? "(无水印内容)";
@@ -212,9 +246,7 @@ export default function DecodePage({ ossConfigured, active = true, autoDelete = 
                 key={item.id}
                 className="group flex items-center gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2.5 transition hover:shadow-sm dark:border-zinc-700/60 dark:bg-zinc-900"
               >
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-purple-50 text-purple-400 dark:bg-purple-900/20">
-                  <ScanSearch className="h-5 w-5" />
-                </div>
+                <DecodeThumbnail path={item.path} busy={busy} />
 
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-zinc-800 dark:text-zinc-200">
@@ -240,6 +272,14 @@ export default function DecodePage({ ossConfigured, active = true, autoDelete = 
                       </span>
                     )}
                   </div>
+                  {item.status === "decoding" && item.progress != null && (
+                    <div className="mt-1.5 h-1 w-full rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-purple-500 transition-all duration-500 ease-out"
+                        style={{ width: `${item.progress}%` }}
+                      />
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex shrink-0 items-center gap-1 opacity-70 group-hover:opacity-100 transition-opacity">
