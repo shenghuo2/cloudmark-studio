@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { Stamp, Zap } from "lucide-react";
 import DropZone from "./DropZone";
 import ImageCard from "./ImageCard";
@@ -12,9 +12,10 @@ let nextId = 0;
 interface Props {
   ossConfigured: boolean;
   watermarkConfig: WatermarkConfig | null;
+  externalFiles?: string[];
 }
 
-export default function WatermarkPage({ ossConfigured, watermarkConfig }: Props) {
+export default function WatermarkPage({ ossConfigured, watermarkConfig, externalFiles }: Props) {
   const [images, setImages] = useState<ImageItem[]>([]);
   const [watermarkText, setWatermarkText] = useState(
     watermarkConfig?.content || "版权所有CloudMark"
@@ -60,6 +61,24 @@ export default function WatermarkPage({ ossConfigured, watermarkConfig }: Props)
     },
     [updateImage]
   );
+
+  // Handle files sent from other pages (e.g. ToolsPage compress results)
+  const processedExternalRef = useRef<string[] | undefined>(undefined);
+  useEffect(() => {
+    if (externalFiles && externalFiles.length > 0 && externalFiles !== processedExternalRef.current) {
+      processedExternalRef.current = externalFiles;
+      const newImages: ImageItem[] = externalFiles.map((p) => ({
+        id: String(++nextId),
+        name: p.split("/").pop() ?? p.split("\\").pop() ?? p,
+        path: p,
+        status: "uploading" as const,
+      }));
+      setImages((prev) => [...prev, ...newImages]);
+      for (const img of newImages) {
+        autoUpload(img.id, img.path);
+      }
+    }
+  }, [externalFiles, autoUpload]);
 
   const handleFilesSelected = useCallback(
     (paths: string[]) => {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import {
   Stamp,
   ScanSearch,
@@ -45,8 +45,14 @@ const navItems: { key: Page; label: string; icon: React.ReactNode }[] = [
 ];
 
 function App() {
-  const { config, loading, updateOss, updateWatermark } = useConfig();
+  const { config, loading, updateOss, updateWatermark, updateCompress } = useConfig();
   const [page, setPage] = useState<Page>("watermark");
+  const [watermarkFiles, setWatermarkFiles] = useState<string[]>([]);
+
+  const handleSendToWatermark = useCallback((paths: string[]) => {
+    setWatermarkFiles(paths);
+    setPage("watermark");
+  }, []);
 
   if (loading) {
     return (
@@ -137,13 +143,16 @@ function App() {
         {/* Page content — all pages stay mounted to preserve state */}
         <div className="h-[calc(100vh-48px)] overflow-y-auto p-5">
           <div className={page === "watermark" ? "" : "hidden"}>
-            <WatermarkPage ossConfigured={ossConfigured} watermarkConfig={config?.watermark ?? null} />
+            <WatermarkPage ossConfigured={ossConfigured} watermarkConfig={config?.watermark ?? null} externalFiles={watermarkFiles} />
           </div>
           <div className={page === "decode" ? "" : "hidden"}>
             <DecodePage ossConfigured={ossConfigured} />
           </div>
           <div className={page === "tools" ? "" : "hidden"}>
-            <ToolsPage />
+            <ToolsPage
+              autoSave={config?.compress?.auto_save ?? false}
+              onSendToWatermark={handleSendToWatermark}
+            />
           </div>
           <div className={page === "history" ? "" : "hidden"}>
             <HistoryPage />
@@ -154,6 +163,8 @@ function App() {
               onSaveOss={updateOss}
               watermarkConfig={config?.watermark ?? null}
               onSaveWatermark={updateWatermark}
+              compressConfig={config?.compress ?? null}
+              onSaveCompress={updateCompress}
             />
           </div>
         </div>
