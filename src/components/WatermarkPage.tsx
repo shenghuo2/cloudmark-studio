@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { Stamp, Zap } from "lucide-react";
 import DropZone from "./DropZone";
 import ImageCard from "./ImageCard";
@@ -15,6 +15,9 @@ export default function WatermarkPage({ ossConfigured }: Props) {
   const [images, setImages] = useState<ImageItem[]>([]);
   const [watermarkText, setWatermarkText] = useState("版权所有CloudMark");
   const [strength, setStrength] = useState("low");
+
+  const imagesRef = useRef(images);
+  imagesRef.current = images;
 
   const updateImage = useCallback(
     (id: string, patch: Partial<ImageItem>) => {
@@ -50,7 +53,7 @@ export default function WatermarkPage({ ossConfigured }: Props) {
 
   const handleAddWatermark = useCallback(
     async (id: string) => {
-      const img = images.find((i) => i.id === id);
+      const img = imagesRef.current.find((i) => i.id === id);
       if (!img) return;
 
       if (!watermarkText.trim()) {
@@ -74,12 +77,12 @@ export default function WatermarkPage({ ossConfigured }: Props) {
         updateImage(id, { status: "error", error: String(e) });
       }
     },
-    [images, updateImage, watermarkText, strength]
+    [updateImage, watermarkText, strength]
   );
 
   const handleDeleteOss = useCallback(
     async (id: string) => {
-      const img = images.find((i) => i.id === id);
+      const img = imagesRef.current.find((i) => i.id === id);
       if (!img) return;
       try {
         if (img.watermarkedKey) await deleteFromOss(img.watermarkedKey);
@@ -94,7 +97,7 @@ export default function WatermarkPage({ ossConfigured }: Props) {
         updateImage(id, { error: `删除失败: ${e}` });
       }
     },
-    [images, updateImage]
+    [updateImage]
   );
 
   const handleRemove = useCallback((id: string) => {
@@ -102,7 +105,7 @@ export default function WatermarkPage({ ossConfigured }: Props) {
   }, []);
 
   async function handleBatchWatermark() {
-    const pending = images.filter(
+    const pending = imagesRef.current.filter(
       (img) => img.status === "pending" || img.status === "error"
     );
     for (const img of pending) {

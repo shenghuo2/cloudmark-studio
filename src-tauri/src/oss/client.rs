@@ -35,13 +35,13 @@ impl OssClient {
 
     /// Get the full URL for an object key.
     fn object_url(&self, object_key: &str) -> String {
-        format!("https://{}/{}", self.bucket_host(), object_key)
+        format!("https://{}/{}", self.bucket_host(), encode_object_key(object_key))
     }
 
     /// Get the public URL for an object (using custom domain if configured).
     pub fn public_url(&self, object_key: &str) -> String {
         if let Some(domain) = &self.config.custom_domain {
-            format!("https://{}/{}", domain, object_key)
+            format!("https://{}/{}", domain, encode_object_key(object_key))
         } else {
             self.object_url(object_key)
         }
@@ -221,13 +221,14 @@ impl OssClient {
         let url = format!(
             "https://{}/{}?x-oss-process",
             self.bucket_host(),
-            source_key
+            encode_object_key(source_key)
         );
 
         let resp = self
             .http
             .post(&url)
             .header(DATE, &date)
+            .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
             .header(AUTHORIZATION, self.authorization(&signature))
             .body(format!("x-oss-process={}", process))
             .send()
@@ -282,13 +283,14 @@ impl OssClient {
         let url = format!(
             "https://{}/{}?x-oss-async-process",
             self.bucket_host(),
-            source_key
+            encode_object_key(source_key)
         );
 
         let resp = self
             .http
             .post(&url)
             .header(DATE, &date)
+            .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
             .header(AUTHORIZATION, self.authorization(&signature))
             .body(format!("x-oss-async-process={}", process))
             .send()
@@ -351,6 +353,16 @@ impl OssClient {
 
         Ok(())
     }
+}
+
+/// URL-encode each segment of an OSS object key, preserving '/' as path separator.
+fn encode_object_key(key: &str) -> String {
+    key.split('/')
+        .map(|segment| {
+            url::form_urlencoded::byte_serialize(segment.as_bytes()).collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 /// Guess MIME type from file extension.

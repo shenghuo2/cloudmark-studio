@@ -82,19 +82,17 @@ pub fn compress_image(
     let input = Path::new(input_path);
     let original_size = fs::metadata(input)?.len();
 
-    // Decode image (with size check to prevent OOM)
-    let reader = ImageReader::open(input)?.with_guessed_format()?;
-    if let Ok((w, h)) = reader.into_dimensions() {
-        if (w as u64) * (h as u64) > MAX_PIXELS {
-            anyhow::bail!(
-                "Image too large: {}x{} ({:.0}MP, max {}MP)",
-                w, h,
-                (w as f64 * h as f64) / 1_000_000.0,
-                MAX_PIXELS / 1_000_000
-            );
-        }
-    }
+    // Decode image then check size to prevent processing oversized images
     let img = ImageReader::open(input)?.with_guessed_format()?.decode()?;
+    let (w, h) = (img.width(), img.height());
+    if (w as u64) * (h as u64) > MAX_PIXELS {
+        anyhow::bail!(
+            "Image too large: {}x{} ({:.0}MP, max {}MP)",
+            w, h,
+            (w as f64 * h as f64) / 1_000_000.0,
+            MAX_PIXELS / 1_000_000
+        );
+    }
 
     // Determine output format
     let out_format = if opts.format == "original" {

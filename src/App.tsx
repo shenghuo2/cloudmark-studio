@@ -49,7 +49,13 @@ function App() {
     );
   }
 
-  const ossConfigured = !!config?.oss?.access_key_id;
+  const ossConfigured = !!(
+    config?.oss?.access_key_id &&
+    config?.oss?.access_key_secret &&
+    config?.oss?.endpoint &&
+    config?.oss?.bucket &&
+    config?.oss?.region
+  );
 
   return (
     <div className="flex h-screen bg-zinc-50 dark:bg-zinc-950">

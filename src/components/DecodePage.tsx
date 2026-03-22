@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { ScanSearch, Loader2 } from "lucide-react";
 import DropZone from "./DropZone";
 import { uploadToOss, decodeWatermark, getDecodeResult } from "../lib/tauri";
@@ -22,6 +22,9 @@ interface Props {
 export default function DecodePage({ ossConfigured }: Props) {
   const [items, setItems] = useState<DecodeItem[]>([]);
   const [strength, setStrength] = useState("low");
+
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
 
   const updateItem = useCallback(
     (id: string, patch: Partial<DecodeItem>) => {
@@ -57,7 +60,7 @@ export default function DecodePage({ ossConfigured }: Props) {
 
   const handleDecode = useCallback(
     async (id: string) => {
-      const item = items.find((i) => i.id === id);
+      const item = itemsRef.current.find((i) => i.id === id);
       if (!item) return;
 
       let objectKey = item.objectKey;
@@ -111,7 +114,7 @@ export default function DecodePage({ ossConfigured }: Props) {
         updateItem(id, { status: "error", error: String(e) });
       }
     },
-    [items, updateItem, strength]
+    [updateItem, strength]
   );
 
   const handleRemove = useCallback((id: string) => {

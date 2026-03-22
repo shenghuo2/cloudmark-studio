@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import {
   Loader2,
   Download,
@@ -53,6 +53,9 @@ export default function ToolsPage() {
   const [resizeW, setResizeW] = useState<string>("");
   const [resizeH, setResizeH] = useState<string>("");
 
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+
   const handleFilesSelected = useCallback(async (paths: string[]) => {
     const newItems: CompressItem[] = paths.map((p) => ({
       id: String(++nextId),
@@ -86,7 +89,7 @@ export default function ToolsPage() {
 
   const handleCompress = useCallback(
     async (id: string) => {
-      const item = items.find((i) => i.id === id);
+      const item = itemsRef.current.find((i) => i.id === id);
       if (!item) return;
 
       setItems((prev) =>
@@ -116,17 +119,17 @@ export default function ToolsPage() {
         );
       }
     },
-    [items, format, quality, pngLevel, resizeW, resizeH]
+    [format, quality, pngLevel, resizeW, resizeH]
   );
 
   const handleCompressAll = useCallback(async () => {
-    const toProcess = items.filter(
+    const toProcess = itemsRef.current.filter(
       (i) => i.status === "ready" || i.status === "error"
     );
     for (const item of toProcess) {
       await handleCompress(item.id);
     }
-  }, [items, handleCompress]);
+  }, [handleCompress]);
 
   const handleRemove = useCallback((id: string) => {
     setItems((prev) => prev.filter((i) => i.id !== id));
