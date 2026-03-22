@@ -1,7 +1,8 @@
 import { useState, useCallback, useRef } from "react";
 import { ScanSearch, Loader2 } from "lucide-react";
 import DropZone from "./DropZone";
-import { uploadToOss, decodeWatermark, getDecodeResult } from "../lib/tauri";
+import { uploadToOss, decodeWatermark, getDecodeResult, downloadUrlToTemp } from "../lib/tauri";
+import { pushHistory } from "./HistoryPage";
 
 interface DecodeItem {
   id: string;
@@ -35,54 +36,66 @@ export default function DecodePage({ ossConfigured }: Props) {
     []
   );
 
-  const handleFilesSelected = useCallback((paths: string[]) => {
-    const newItems: DecodeItem[] = paths.map((p) => ({
-      id: String(++nextId),
-      name: p.split("/").pop() ?? p.split("\\").pop() ?? p,
-      path: p,
-      status: "pending" as const,
-    }));
-    setItems((prev) => [...prev, ...newItems]);
-  }, []);
+  // Auto-upload a single item to OSS
+  const autoUpload = useCallback(
+    async (id: string, localPath: string) => {
+      updateItem(id, { status: "uploading", error: undefined });
+      try {
+        const upload = await uploadToOss(localPath);
+        updateItem(id, { status: "pending", objectKey: upload.object_key });
+      } catch (e) {
+        updateItem(id, { status: "error", error: `上传失败: ${e}` });
+      }
+    },
+    [updateItem]
+  );
 
-  const handleUrlSubmit = useCallback((url: string) => {
-    const name = url.split("/").pop()?.split("?")[0] || "url-image";
-    setItems((prev) => [
-      ...prev,
-      {
+  const handleFilesSelected = useCallback(
+    (paths: string[]) => {
+      const newItems: DecodeItem[] = paths.map((p) => ({
         id: String(++nextId),
-        name,
-        path: url,
-        status: "pending" as const,
-      },
-    ]);
-  }, []);
+        name: p.split("/").pop() ?? p.split("\\").pop() ?? p,
+        path: p,
+        status: "uploading" as const,
+      }));
+      setItems((prev) => [...prev, ...newItems]);
+      for (const item of newItems) {
+        autoUpload(item.id, item.path);
+      }
+    },
+    [autoUpload]
+  );
+
+  const handleUrlSubmit = useCallback(
+    (url: string) => {
+      const name = url.split("/").pop()?.split("?")[0] || "url-image";
+      const id = String(++nextId);
+      setItems((prev) => [
+        ...prev,
+        { id, name, path: url, status: "uploading" as const },
+      ]);
+      (async () => {
+        try {
+          const tempPath = await downloadUrlToTemp(url);
+          const upload = await uploadToOss(tempPath);
+          updateItem(id, { status: "pending", path: tempPath, objectKey: upload.object_key });
+        } catch (e) {
+          updateItem(id, { status: "error", error: `获取失败: ${e}` });
+        }
+      })();
+    },
+    [updateItem]
+  );
 
   const handleDecode = useCallback(
     async (id: string) => {
       const item = itemsRef.current.find((i) => i.id === id);
       if (!item) return;
 
-      let objectKey = item.objectKey;
+      const objectKey = item.objectKey;
 
-      // If it's a local file, upload first
-      if (!objectKey && !item.path.startsWith("http")) {
-        updateItem(id, { status: "uploading", error: undefined });
-        try {
-          const upload = await uploadToOss(item.path);
-          objectKey = upload.object_key;
-          updateItem(id, { objectKey, status: "decoding" });
-        } catch (e) {
-          updateItem(id, { status: "error", error: `上传失败: ${e}` });
-          return;
-        }
-      } else if (!objectKey) {
-        // It's a URL — for now treat the URL path as the OSS key
-        // The user should provide an OSS object key or the image should already be on OSS
-        updateItem(id, {
-          status: "error",
-          error: "URL 图片需先上传至 OSS 才能解码",
-        });
+      if (!objectKey) {
+        updateItem(id, { status: "error", error: "图片尚未上传完成" });
         return;
       }
 
@@ -95,9 +108,17 @@ export default function DecodePage({ ossConfigured }: Props) {
           await new Promise((r) => setTimeout(r, 2000));
           const result = await getDecodeResult(submit.task_id);
           if (result.status === "Succeeded") {
+            const content = result.content ?? "(无水印内容)";
             updateItem(id, {
               status: "done",
-              result: result.content ?? "(无水印内容)",
+              result: content,
+            });
+            pushHistory({
+              type: "decode",
+              name: item.name,
+              url: "", // decode doesn't produce a URL
+              decodedText: content,
+              objectKey: objectKey,
             });
             return;
           }
@@ -130,7 +151,7 @@ export default function DecodePage({ ossConfigured }: Props) {
   };
 
   const statusLabels: Record<string, string> = {
-    pending: "待解析",
+    pending: "已上传",
     uploading: "上传中",
     decoding: "解析中",
     done: "完成",

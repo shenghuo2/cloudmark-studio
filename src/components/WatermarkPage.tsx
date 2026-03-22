@@ -3,18 +3,33 @@ import { Stamp, Zap } from "lucide-react";
 import DropZone from "./DropZone";
 import ImageCard from "./ImageCard";
 import type { ImageItem } from "./ImageCard";
-import { addWatermark, deleteFromOss } from "../lib/tauri";
+import { addWatermark, deleteFromOss, downloadUrlToTemp, uploadToOss, renameOssObject } from "../lib/tauri";
+import type { WatermarkConfig } from "../lib/tauri";
+import { pushHistory } from "./HistoryPage";
 
 let nextId = 0;
 
 interface Props {
   ossConfigured: boolean;
+  watermarkConfig: WatermarkConfig | null;
 }
 
-export default function WatermarkPage({ ossConfigured }: Props) {
+export default function WatermarkPage({ ossConfigured, watermarkConfig }: Props) {
   const [images, setImages] = useState<ImageItem[]>([]);
-  const [watermarkText, setWatermarkText] = useState("版权所有CloudMark");
-  const [strength, setStrength] = useState("low");
+  const [watermarkText, setWatermarkText] = useState(
+    watermarkConfig?.content || "版权所有CloudMark"
+  );
+  const [strength, setStrength] = useState(
+    watermarkConfig?.strength || "low"
+  );
+  const [initialized, setInitialized] = useState(false);
+
+  // Sync defaults from config when it loads (only once)
+  if (!initialized && watermarkConfig) {
+    if (watermarkConfig.content) setWatermarkText(watermarkConfig.content);
+    if (watermarkConfig.strength) setStrength(watermarkConfig.strength);
+    setInitialized(true);
+  }
 
   const imagesRef = useRef(images);
   imagesRef.current = images;
@@ -28,28 +43,67 @@ export default function WatermarkPage({ ossConfigured }: Props) {
     []
   );
 
-  const handleFilesSelected = useCallback((paths: string[]) => {
-    const newImages: ImageItem[] = paths.map((p) => ({
-      id: String(++nextId),
-      name: p.split("/").pop() ?? p.split("\\").pop() ?? p,
-      path: p,
-      status: "pending" as const,
-    }));
-    setImages((prev) => [...prev, ...newImages]);
-  }, []);
+  // Auto-upload a single item to OSS
+  const autoUpload = useCallback(
+    async (id: string, localPath: string) => {
+      updateImage(id, { status: "uploading", error: undefined });
+      try {
+        const result = await uploadToOss(localPath);
+        updateImage(id, {
+          status: "pending",
+          objectKey: result.object_key,
+          watermarkedUrl: undefined,
+        });
+      } catch (e) {
+        updateImage(id, { status: "error", error: `上传失败: ${e}` });
+      }
+    },
+    [updateImage]
+  );
 
-  const handleUrlSubmit = useCallback((url: string) => {
-    const name = url.split("/").pop()?.split("?")[0] || "url-image";
-    setImages((prev) => [
-      ...prev,
-      {
+  const handleFilesSelected = useCallback(
+    (paths: string[]) => {
+      const newImages: ImageItem[] = paths.map((p) => ({
         id: String(++nextId),
-        name,
-        path: url,
-        status: "pending" as const,
-      },
-    ]);
-  }, []);
+        name: p.split("/").pop() ?? p.split("\\").pop() ?? p,
+        path: p,
+        status: "uploading" as const,
+      }));
+      setImages((prev) => [...prev, ...newImages]);
+      // Auto-upload each
+      for (const img of newImages) {
+        autoUpload(img.id, img.path);
+      }
+    },
+    [autoUpload]
+  );
+
+  const handleUrlSubmit = useCallback(
+    (url: string) => {
+      const name = url.split("/").pop()?.split("?")[0] || "url-image";
+      const id = String(++nextId);
+      setImages((prev) => [
+        ...prev,
+        { id, name, path: url, status: "uploading" as const },
+      ]);
+      // Download URL to temp then upload
+      (async () => {
+        try {
+          updateImage(id, { status: "uploading", error: undefined });
+          const tempPath = await downloadUrlToTemp(url);
+          const result = await uploadToOss(tempPath);
+          updateImage(id, {
+            status: "pending",
+            path: tempPath,
+            objectKey: result.object_key,
+          });
+        } catch (e) {
+          updateImage(id, { status: "error", error: `获取失败: ${e}` });
+        }
+      })();
+    },
+    [autoUpload, updateImage]
+  );
 
   const handleAddWatermark = useCallback(
     async (id: string) => {
@@ -58,6 +112,11 @@ export default function WatermarkPage({ ossConfigured }: Props) {
 
       if (!watermarkText.trim()) {
         updateImage(id, { status: "error", error: "请输入水印文本" });
+        return;
+      }
+
+      if (!img.objectKey) {
+        updateImage(id, { status: "error", error: "图片尚未上传完成" });
         return;
       }
 
@@ -72,6 +131,13 @@ export default function WatermarkPage({ ossConfigured }: Props) {
           objectKey: result.source_key,
           watermarkedKey: result.output_key,
           watermarkedUrl: result.url,
+        });
+        pushHistory({
+          type: "watermark",
+          name: img.name,
+          url: result.url,
+          watermarkText: watermarkText.trim(),
+          objectKey: result.output_key,
         });
       } catch (e) {
         updateImage(id, { status: "error", error: String(e) });
@@ -104,17 +170,43 @@ export default function WatermarkPage({ ossConfigured }: Props) {
     setImages((prev) => prev.filter((img) => img.id !== id));
   }, []);
 
+  const handleRename = useCallback(
+    async (id: string, newName: string) => {
+      const img = imagesRef.current.find((i) => i.id === id);
+      if (!img?.objectKey) {
+        // Not uploaded yet, just rename locally
+        setImages((prev) =>
+          prev.map((i) => (i.id === id ? { ...i, name: newName } : i))
+        );
+        return;
+      }
+      try {
+        const result = await renameOssObject(img.objectKey, newName);
+        setImages((prev) =>
+          prev.map((i) =>
+            i.id === id
+              ? { ...i, name: newName, objectKey: result.new_key }
+              : i
+          )
+        );
+      } catch (e) {
+        updateImage(id, { error: `重命名失败: ${e}` });
+      }
+    },
+    [updateImage]
+  );
+
   async function handleBatchWatermark() {
-    const pending = imagesRef.current.filter(
-      (img) => img.status === "pending" || img.status === "error"
+    const ready = imagesRef.current.filter(
+      (img) => (img.status === "pending" || img.status === "error") && img.objectKey
     );
-    for (const img of pending) {
+    for (const img of ready) {
       await handleAddWatermark(img.id);
     }
   }
 
-  const pendingCount = images.filter(
-    (i) => i.status === "pending" || i.status === "error"
+  const readyCount = images.filter(
+    (i) => (i.status === "pending" || i.status === "error") && i.objectKey
   ).length;
 
   return (
@@ -146,14 +238,14 @@ export default function WatermarkPage({ ossConfigured }: Props) {
             <option value="high">高</option>
           </select>
         </div>
-        {images.length > 0 && pendingCount > 0 && (
+        {images.length > 0 && readyCount > 0 && (
           <button
             onClick={handleBatchWatermark}
             disabled={!ossConfigured || !watermarkText.trim()}
             className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-4 py-1.5 text-sm font-medium text-white shadow-sm transition hover:bg-primary-700 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Zap className="h-4 w-4" />
-            全部加水印 ({pendingCount})
+            全部加水印 ({readyCount})
           </button>
         )}
       </div>
@@ -181,6 +273,7 @@ export default function WatermarkPage({ ossConfigured }: Props) {
               onProcess={handleAddWatermark}
               onRemove={handleRemove}
               onDeleteOss={handleDeleteOss}
+              onRename={handleRename}
               processLabel="加水印"
               processIcon={<Stamp className="h-3.5 w-3.5" />}
             />
