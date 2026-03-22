@@ -142,7 +142,8 @@ export default function WatermarkPage({ ossConfigured, watermarkConfig, external
 
       updateImage(id, { status: "watermarking", error: undefined });
       try {
-        const result = await addWatermark(img.path, {
+        const result = await addWatermark({
+          objectKey: img.objectKey,
           watermarkText: watermarkText.trim(),
           strength,
         });

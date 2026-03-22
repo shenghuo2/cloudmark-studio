@@ -112,8 +112,9 @@ export async function renameOssObject(
 // ── Watermark API ────────────────────────────────────────────────────
 
 export async function addWatermark(
-  filePath: string,
-  opts?: {
+  opts: {
+    filePath?: string;
+    objectKey?: string;
     watermarkText?: string;
     strength?: string;
     quality?: number;
@@ -121,11 +122,12 @@ export async function addWatermark(
   }
 ): Promise<WatermarkResult> {
   return invoke("add_watermark", {
-    filePath,
-    watermarkText: opts?.watermarkText ?? null,
-    strength: opts?.strength ?? null,
-    quality: opts?.quality ?? null,
-    keepOriginal: opts?.keepOriginal ?? null,
+    filePath: opts.filePath ?? null,
+    objectKey: opts.objectKey ?? null,
+    watermarkText: opts.watermarkText ?? null,
+    strength: opts.strength ?? null,
+    quality: opts.quality ?? null,
+    keepOriginal: opts.keepOriginal ?? null,
   });
 }
 

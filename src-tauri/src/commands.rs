@@ -116,7 +116,8 @@ pub struct WatermarkResult {
 #[tauri::command]
 pub async fn add_watermark(
     state: State<'_, AppState>,
-    file_path: String,
+    file_path: Option<String>,
+    object_key: Option<String>,
     watermark_text: Option<String>,
     strength: Option<String>,
     quality: Option<u8>,
@@ -142,35 +143,39 @@ pub async fn add_watermark(
         encode::validate_quality(q_val).map_err(|e| e.to_string())?;
     }
 
-    let path = PathBuf::from(&file_path);
-    if !path.exists() {
-        return Err(format!("File not found: {}", file_path));
-    }
-
-    let filename = path
-        .file_name()
-        .unwrap()
-        .to_str()
-        .unwrap();
-    let uuid = uuid::Uuid::new_v4();
+    let client = OssClient::new(oss_config.clone());
     let prefix = oss_config.path_prefix.as_deref().unwrap_or("");
-    let source_key = format!("{}__tmp/{}-{}", prefix, uuid, filename);
-    let output_key = format!("{}watermarked/{}-{}", prefix, uuid, filename);
+    let uuid = uuid::Uuid::new_v4();
 
-    let client = OssClient::new(oss_config);
+    // Determine source_key: use existing object_key or upload local file
+    let source_key = if let Some(key) = object_key {
+        key
+    } else if let Some(fp) = &file_path {
+        let path = PathBuf::from(fp);
+        if !path.exists() {
+            return Err(format!("File not found: {}", fp));
+        }
+        let filename = path.file_name().unwrap().to_str().unwrap();
+        let key = format!("{}__tmp/{}-{}", prefix, uuid, filename);
+        client
+            .upload_file(&path, &key)
+            .await
+            .map_err(|e| format!("Upload failed: {}", e))?;
+        key
+    } else {
+        return Err("Either file_path or object_key must be provided".to_string());
+    };
 
-    // Step 1: Upload original
-    client
-        .upload_file(&path, &source_key)
-        .await
-        .map_err(|e| format!("Upload failed: {}", e))?;
+    // Derive output filename from source_key
+    let source_filename = source_key.split('/').last().unwrap_or(&source_key);
+    let output_key = format!("{}watermarked/{}-{}", prefix, uuid, source_filename);
 
-    // Step 2: Add blind watermark
+    // Add blind watermark
     let result = client
         .add_blind_watermark(&source_key, &output_key, &text, &str_val, q)
         .await;
 
-    // Step 3: Cleanup temp file only if explicitly requested
+    // Cleanup temp file only if explicitly requested
     if keep_original == Some(false) {
         let _ = client.delete(&source_key).await;
     }
