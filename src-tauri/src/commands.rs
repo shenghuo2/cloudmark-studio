@@ -223,6 +223,57 @@ pub async fn delete_from_oss(
     Ok(())
 }
 
+// ── OSS rename command ──────────────────────────────────────────────
+
+#[derive(serde::Serialize)]
+pub struct RenameResult {
+    pub new_key: String,
+    pub url: String,
+}
+
+#[tauri::command]
+pub async fn rename_oss_object(
+    state: State<'_, AppState>,
+    object_key: String,
+    new_name: String,
+) -> Result<RenameResult, String> {
+    let oss_config = {
+        let cfg = state.config.lock().map_err(|e| e.to_string())?;
+        cfg.oss
+            .clone()
+            .ok_or_else(|| "OSS not configured".to_string())?
+    };
+
+    // Build new key: keep the same directory prefix, just change the filename
+    let prefix = if let Some(pos) = object_key.rfind('/') {
+        &object_key[..=pos]
+    } else {
+        ""
+    };
+    let new_key = format!("{}{}", prefix, new_name);
+
+    if new_key == object_key {
+        let client = OssClient::new(oss_config);
+        return Ok(RenameResult {
+            url: client.public_url(&new_key),
+            new_key,
+        });
+    }
+
+    let client = OssClient::new(oss_config);
+    client
+        .copy_object(&object_key, &new_key)
+        .await
+        .map_err(|e| format!("复制失败: {}", e))?;
+    client
+        .delete(&object_key)
+        .await
+        .map_err(|e| format!("删除旧文件失败: {}", e))?;
+
+    let url = client.public_url(&new_key);
+    Ok(RenameResult { new_key, url })
+}
+
 // ── Decode watermark commands ────────────────────────────────────────
 
 #[derive(serde::Serialize)]
@@ -296,6 +347,62 @@ pub async fn get_decode_result(
         content: result.content,
         message: result.message,
     })
+}
+
+// ── URL download command ─────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn download_url_to_temp(url: String) -> Result<String, String> {
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+        .build()
+        .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))?;
+
+    let resp = client
+        .get(&url)
+        .header("Accept", "image/*,*/*;q=0.8")
+        .send()
+        .await
+        .map_err(|e| format!("下载失败: {}", e))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("下载失败: HTTP {}", resp.status()));
+    }
+
+    // Verify content type is an image
+    let content_type = resp
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+
+    if !content_type.is_empty() && !content_type.starts_with("image/") {
+        return Err(format!(
+            "URL 返回的不是图片 (Content-Type: {})，请提供图片的直链",
+            content_type
+        ));
+    }
+
+    // Extract filename from URL
+    let url_path = url.split('?').next().unwrap_or(&url);
+    let filename = url_path.split('/').last().unwrap_or("image.png");
+    let filename = if filename.is_empty() { "image.png" } else { filename };
+
+    let temp_dir = std::env::temp_dir().join("cloudmark-downloads");
+    std::fs::create_dir_all(&temp_dir).map_err(|e| format!("创建临时目录失败: {}", e))?;
+
+    let dest = temp_dir.join(format!("{}-{}", uuid::Uuid::new_v4(), filename));
+    let bytes = resp
+        .bytes()
+        .await
+        .map_err(|e| format!("读取响应失败: {}", e))?;
+
+    tokio::fs::write(&dest, &bytes)
+        .await
+        .map_err(|e| format!("写入临时文件失败: {}", e))?;
+
+    Ok(dest.to_string_lossy().to_string())
 }
 
 // ── Image compression commands ───────────────────────────────────────

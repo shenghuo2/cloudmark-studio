@@ -28,8 +28,10 @@ pub fn run() {
             commands::add_watermark,
             commands::download_from_oss,
             commands::delete_from_oss,
+            commands::rename_oss_object,
             commands::decode_watermark,
             commands::get_decode_result,
+            commands::download_url_to_temp,
             commands::get_image_info,
             commands::compress_image,
         ])

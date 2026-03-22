@@ -84,6 +84,20 @@ export async function deleteFromOss(objectKey: string): Promise<void> {
   return invoke("delete_from_oss", { objectKey });
 }
 
+// ── OSS Rename API ──────────────────────────────────────────────────
+
+export interface RenameResult {
+  new_key: string;
+  url: string;
+}
+
+export async function renameOssObject(
+  objectKey: string,
+  newName: string
+): Promise<RenameResult> {
+  return invoke("rename_oss_object", { objectKey, newName });
+}
+
 // ── Watermark API ────────────────────────────────────────────────────
 
 export async function addWatermark(
@@ -124,6 +138,12 @@ export async function getDecodeResult(
     taskId,
     immProject: immProject ?? null,
   });
+}
+
+// ── URL Download API ────────────────────────────────────────────────
+
+export async function downloadUrlToTemp(url: string): Promise<string> {
+  return invoke("download_url_to_temp", { url });
 }
 
 // ── Image Compression API ───────────────────────────────────────────

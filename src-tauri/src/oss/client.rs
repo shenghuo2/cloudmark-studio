@@ -318,6 +318,43 @@ impl OssClient {
         })
     }
 
+    /// Copy an object within the same bucket (used for rename).
+    pub async fn copy_object(&self, source_key: &str, dest_key: &str) -> Result<()> {
+        let date = sign::http_date();
+        let resource = self.canonicalized_resource(dest_key);
+        let copy_source = format!("/{}/{}", self.config.bucket, source_key);
+
+        let oss_headers = format!("x-oss-copy-source:{}\n", copy_source);
+        let signature = sign::sign_v1(
+            &self.config.access_key_secret,
+            "PUT",
+            "",
+            "",
+            &date,
+            &oss_headers,
+            &resource,
+        );
+
+        let url = self.object_url(dest_key);
+        let resp = self
+            .http
+            .put(&url)
+            .header(DATE, &date)
+            .header("x-oss-copy-source", &copy_source)
+            .header(AUTHORIZATION, self.authorization(&signature))
+            .send()
+            .await
+            .with_context(|| format!("Failed to copy OSS object: {} -> {}", source_key, dest_key))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            anyhow::bail!("OSS copy failed ({}): {}", status, body);
+        }
+
+        Ok(())
+    }
+
     /// Delete an object from OSS (for cleanup of temp files).
     pub async fn delete(&self, object_key: &str) -> Result<()> {
         let date = sign::http_date();
