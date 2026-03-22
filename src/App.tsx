@@ -45,7 +45,7 @@ const navItems: { key: Page; label: string; icon: React.ReactNode }[] = [
 ];
 
 function App() {
-  const { config, loading, updateOss, updateWatermark, updateCompress } = useConfig();
+  const { config, loading, updateOss, updateWatermark, updateCompress, updateDecode } = useConfig();
   const [page, setPage] = useState<Page>("watermark");
   const [watermarkFiles, setWatermarkFiles] = useState<string[]>([]);
 
@@ -146,7 +146,7 @@ function App() {
             <WatermarkPage ossConfigured={ossConfigured} watermarkConfig={config?.watermark ?? null} externalFiles={watermarkFiles} active={page === "watermark"} />
           </div>
           <div className={page === "decode" ? "" : "hidden"}>
-            <DecodePage ossConfigured={ossConfigured} active={page === "decode"} />
+            <DecodePage ossConfigured={ossConfigured} active={page === "decode"} autoDelete={config?.decode?.auto_delete ?? true} />
           </div>
           <div className={page === "tools" ? "" : "hidden"}>
             <ToolsPage
@@ -166,6 +166,8 @@ function App() {
               onSaveWatermark={updateWatermark}
               compressConfig={config?.compress ?? null}
               onSaveCompress={updateCompress}
+              decodeConfig={config?.decode ?? null}
+              onSaveDecode={updateDecode}
             />
           </div>
         </div>

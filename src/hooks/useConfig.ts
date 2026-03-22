@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
-import type { AppConfig, OssConfig, WatermarkConfig, CompressConfig } from "../lib/tauri";
+import type { AppConfig, OssConfig, WatermarkConfig, CompressConfig, DecodeConfig } from "../lib/tauri";
 import {
   getConfig,
   saveOssConfig,
   saveWatermarkConfig,
   saveCompressConfig,
+  saveDecodeConfig,
 } from "../lib/tauri";
 
 export function useConfig() {
@@ -25,6 +26,7 @@ export function useConfig() {
         oss: null,
         watermark: { content: "", strength: "low", quality: 90 },
         compress: { auto_save: false },
+        decode: { auto_delete: true },
       });
       setError(null);
     } finally {
@@ -40,7 +42,7 @@ export function useConfig() {
     async (oss: OssConfig) => {
       await saveOssConfig(oss);
       setConfig((prev) =>
-        prev ? { ...prev, oss } : { oss, watermark: { content: "", strength: "low", quality: 90 }, compress: { auto_save: false } }
+        prev ? { ...prev, oss } : { oss, watermark: { content: "", strength: "low", quality: 90 }, compress: { auto_save: false }, decode: { auto_delete: true } }
       );
     },
     []
@@ -50,7 +52,7 @@ export function useConfig() {
     async (watermark: WatermarkConfig) => {
       await saveWatermarkConfig(watermark);
       setConfig((prev) =>
-        prev ? { ...prev, watermark } : { oss: null, watermark, compress: { auto_save: false } }
+        prev ? { ...prev, watermark } : { oss: null, watermark, compress: { auto_save: false }, decode: { auto_delete: true } }
       );
     },
     []
@@ -60,11 +62,21 @@ export function useConfig() {
     async (compress: CompressConfig) => {
       await saveCompressConfig(compress);
       setConfig((prev) =>
-        prev ? { ...prev, compress } : { oss: null, watermark: { content: "", strength: "low", quality: 90 }, compress }
+        prev ? { ...prev, compress } : { oss: null, watermark: { content: "", strength: "low", quality: 90 }, compress, decode: { auto_delete: true } }
       );
     },
     []
   );
 
-  return { config, loading, error, reload: load, updateOss, updateWatermark, updateCompress };
+  const updateDecode = useCallback(
+    async (decode: DecodeConfig) => {
+      await saveDecodeConfig(decode);
+      setConfig((prev) =>
+        prev ? { ...prev, decode } : { oss: null, watermark: { content: "", strength: "low", quality: 90 }, compress: { auto_save: false }, decode }
+      );
+    },
+    []
+  );
+
+  return { config, loading, error, reload: load, updateOss, updateWatermark, updateCompress, updateDecode };
 }

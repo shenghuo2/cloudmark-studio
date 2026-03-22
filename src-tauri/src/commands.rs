@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::State;
 
-use crate::config::{AppConfig, CompressConfig, OssConfig, WatermarkConfig};
+use crate::config::{AppConfig, CompressConfig, DecodeConfig, OssConfig, WatermarkConfig};
 use crate::imm::client::ImmClient;
 use crate::oss::client::OssClient;
 use crate::watermark::encode;
@@ -46,6 +46,17 @@ pub fn save_compress_config(
 ) -> Result<(), String> {
     let mut config = state.config.lock().map_err(|e| e.to_string())?;
     config.compress = compress;
+    config.save().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn save_decode_config(
+    state: State<'_, AppState>,
+    decode: DecodeConfig,
+) -> Result<(), String> {
+    let mut config = state.config.lock().map_err(|e| e.to_string())?;
+    config.decode = decode;
     config.save().map_err(|e| e.to_string())?;
     Ok(())
 }

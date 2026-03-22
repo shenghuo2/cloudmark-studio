@@ -22,10 +22,15 @@ export interface CompressConfig {
   auto_save: boolean;
 }
 
+export interface DecodeConfig {
+  auto_delete: boolean;
+}
+
 export interface AppConfig {
   oss: OssConfig | null;
   watermark: WatermarkConfig;
   compress: CompressConfig;
+  decode: DecodeConfig;
 }
 
 export interface UploadResult {
@@ -70,6 +75,12 @@ export async function saveCompressConfig(
   compress: CompressConfig
 ): Promise<void> {
   return invoke("save_compress_config", { compress });
+}
+
+export async function saveDecodeConfig(
+  decode: DecodeConfig
+): Promise<void> {
+  return invoke("save_decode_config", { decode });
 }
 
 // ── OSS API ──────────────────────────────────────────────────────────

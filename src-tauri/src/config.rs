@@ -46,11 +46,25 @@ impl Default for CompressConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DecodeConfig {
+    /// Whether to auto-delete OSS file after decode completes
+    pub auto_delete: bool,
+}
+
+impl Default for DecodeConfig {
+    fn default() -> Self {
+        Self { auto_delete: true }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub oss: Option<OssConfig>,
     pub watermark: WatermarkConfig,
     #[serde(default)]
     pub compress: CompressConfig,
+    #[serde(default)]
+    pub decode: DecodeConfig,
 }
 
 impl Default for AppConfig {
@@ -59,6 +73,7 @@ impl Default for AppConfig {
             oss: None,
             watermark: WatermarkConfig::default(),
             compress: CompressConfig::default(),
+            decode: DecodeConfig::default(),
         }
     }
 }

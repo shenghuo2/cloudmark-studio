@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from "react";
 import { ScanSearch, Loader2 } from "lucide-react";
 import DropZone from "./DropZone";
-import { uploadToOss, decodeWatermark, getDecodeResult, downloadUrlToTemp } from "../lib/tauri";
+import { uploadToOss, decodeWatermark, getDecodeResult, downloadUrlToTemp, deleteFromOss } from "../lib/tauri";
 import { pushHistory } from "./HistoryPage";
 
 interface DecodeItem {
@@ -19,9 +19,10 @@ let nextId = 0;
 interface Props {
   ossConfigured: boolean;
   active?: boolean;
+  autoDelete?: boolean;
 }
 
-export default function DecodePage({ ossConfigured, active = true }: Props) {
+export default function DecodePage({ ossConfigured, active = true, autoDelete = true }: Props) {
   const [items, setItems] = useState<DecodeItem[]>([]);
   const [strength, setStrength] = useState("low");
 
@@ -117,10 +118,15 @@ export default function DecodePage({ ossConfigured, active = true }: Props) {
             pushHistory({
               type: "decode",
               name: item.name,
-              url: "", // decode doesn't produce a URL
+              url: "",
               decodedText: content,
               objectKey: objectKey,
             });
+            // Auto-delete OSS file after successful decode
+            if (autoDelete && objectKey) {
+              try { await deleteFromOss(objectKey); } catch { /* ignore */ }
+              updateItem(id, { objectKey: undefined });
+            }
             return;
           }
           if (result.status === "Failed") {

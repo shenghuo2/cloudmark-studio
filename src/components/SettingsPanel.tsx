@@ -8,7 +8,7 @@ import {
   Legend,
 } from "@headlessui/react";
 import { Save, Eye, EyeOff, CheckCircle2 } from "lucide-react";
-import type { OssConfig, WatermarkConfig, CompressConfig } from "../lib/tauri";
+import type { OssConfig, WatermarkConfig, CompressConfig, DecodeConfig } from "../lib/tauri";
 
 interface Props {
   ossConfig: OssConfig | null;
@@ -17,9 +17,11 @@ interface Props {
   onSaveWatermark: (wm: WatermarkConfig) => Promise<void>;
   compressConfig: CompressConfig | null;
   onSaveCompress: (c: CompressConfig) => Promise<void>;
+  decodeConfig: DecodeConfig | null;
+  onSaveDecode: (d: DecodeConfig) => Promise<void>;
 }
 
-export default function SettingsPanel({ ossConfig, onSaveOss, watermarkConfig, onSaveWatermark, compressConfig, onSaveCompress }: Props) {
+export default function SettingsPanel({ ossConfig, onSaveOss, watermarkConfig, onSaveWatermark, compressConfig, onSaveCompress, decodeConfig, onSaveDecode }: Props) {
   const [oss, setOss] = useState<OssConfig>({
     access_key_id: "",
     access_key_secret: "",
@@ -37,6 +39,7 @@ export default function SettingsPanel({ ossConfig, onSaveOss, watermarkConfig, o
   });
 
   const [comp, setComp] = useState<CompressConfig>({ auto_save: false });
+  const [dec, setDec] = useState<DecodeConfig>({ auto_delete: true });
 
   useEffect(() => {
     if (watermarkConfig) setWm(watermarkConfig);
@@ -45,6 +48,10 @@ export default function SettingsPanel({ ossConfig, onSaveOss, watermarkConfig, o
   useEffect(() => {
     if (compressConfig) setComp(compressConfig);
   }, [compressConfig]);
+
+  useEffect(() => {
+    if (decodeConfig) setDec(decodeConfig);
+  }, [decodeConfig]);
 
   const [showSecret, setShowSecret] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -354,6 +361,51 @@ export default function SettingsPanel({ ossConfig, onSaveOss, watermarkConfig, o
           >
             <Save className="h-4 w-4" />
             {saving ? "保存中..." : "保存压缩设置"}
+          </button>
+        </div>
+      </Fieldset>
+
+      {/* Decode Config */}
+      <Fieldset className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-700/60 dark:bg-zinc-900">
+        <Legend className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 px-1">
+          水印解析设置
+        </Legend>
+
+        <div className="mt-4 space-y-3">
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={dec.auto_delete}
+              onChange={(e) => setDec((p) => ({ ...p, auto_delete: e.target.checked }))}
+              className="h-4 w-4 rounded border-zinc-300 text-primary-600 focus:ring-primary-500 dark:border-zinc-600 dark:bg-zinc-800"
+            />
+            <div>
+              <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">解析后自动删除 OSS 文件</span>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">解析完成后自动删除上传到 OSS 的临时文件</p>
+            </div>
+          </label>
+        </div>
+
+        <div className="mt-5 flex justify-end">
+          <button
+            onClick={async () => {
+              setSaving(true);
+              setMessage(null);
+              try {
+                await onSaveDecode(dec);
+                setMessage({ type: "success", text: "解析设置已保存" });
+                setTimeout(() => setMessage(null), 3000);
+              } catch (e) {
+                setMessage({ type: "error", text: String(e) });
+              } finally {
+                setSaving(false);
+              }
+            }}
+            disabled={saving}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Save className="h-4 w-4" />
+            {saving ? "保存中..." : "保存解析设置"}
           </button>
         </div>
       </Fieldset>
