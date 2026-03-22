@@ -8,14 +8,16 @@ import {
   Legend,
 } from "@headlessui/react";
 import { Save, Eye, EyeOff, CheckCircle2 } from "lucide-react";
-import type { OssConfig } from "../lib/tauri";
+import type { OssConfig, WatermarkConfig } from "../lib/tauri";
 
 interface Props {
   ossConfig: OssConfig | null;
   onSaveOss: (oss: OssConfig) => Promise<void>;
+  watermarkConfig: WatermarkConfig | null;
+  onSaveWatermark: (wm: WatermarkConfig) => Promise<void>;
 }
 
-export default function SettingsPanel({ ossConfig, onSaveOss }: Props) {
+export default function SettingsPanel({ ossConfig, onSaveOss, watermarkConfig, onSaveWatermark }: Props) {
   const [oss, setOss] = useState<OssConfig>({
     access_key_id: "",
     access_key_secret: "",
@@ -25,6 +27,16 @@ export default function SettingsPanel({ ossConfig, onSaveOss }: Props) {
     path_prefix: "",
     custom_domain: null,
   });
+
+  const [wm, setWm] = useState<WatermarkConfig>({
+    content: "",
+    strength: "low",
+    quality: 90,
+  });
+
+  useEffect(() => {
+    if (watermarkConfig) setWm(watermarkConfig);
+  }, [watermarkConfig]);
 
   const [showSecret, setShowSecret] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -184,6 +196,23 @@ export default function SettingsPanel({ ossConfig, onSaveOss }: Props) {
               可选，上传文件的 OSS 路径前缀
             </Description>
           </Field>
+
+          <Field className="col-span-2">
+            <Label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+              自定义域名
+            </Label>
+            <Input
+              className={inputClass}
+              value={oss.custom_domain ?? ""}
+              onChange={(e) =>
+                setOss((p) => ({ ...p, custom_domain: e.target.value }))
+              }
+              placeholder="img.example.com"
+            />
+            <Description className="mt-1 text-xs text-zinc-500">
+              可选，在 OSS 控制台绑定的自定义域名，用于生成外链
+            </Description>
+          </Field>
         </div>
 
         <div className="mt-5 flex justify-end">
@@ -194,6 +223,84 @@ export default function SettingsPanel({ ossConfig, onSaveOss }: Props) {
           >
             <Save className="h-4 w-4" />
             {saving ? "保存中..." : "保存配置"}
+          </button>
+        </div>
+      </Fieldset>
+      {/* Watermark Config */}
+      <Fieldset className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-700/60 dark:bg-zinc-900">
+        <Legend className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 px-1">
+          默认水印设置
+        </Legend>
+
+        <div className="mt-4 grid grid-cols-2 gap-4">
+          <Field className="col-span-2">
+            <Label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+              水印文本
+            </Label>
+            <Input
+              className={inputClass}
+              value={wm.content}
+              onChange={(e) => setWm((p) => ({ ...p, content: e.target.value }))}
+              placeholder="版权所有CloudMark"
+            />
+            <Description className="mt-1 text-xs text-zinc-500">
+              添加水印时的默认文本内容
+            </Description>
+          </Field>
+
+          <Field>
+            <Label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+              默认强度
+            </Label>
+            <select
+              value={wm.strength}
+              onChange={(e) => setWm((p) => ({ ...p, strength: e.target.value }))}
+              className={inputClass}
+            >
+              <option value="low">低</option>
+              <option value="medium">中</option>
+              <option value="high">高</option>
+            </select>
+          </Field>
+
+          <Field>
+            <Label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+              JPEG 质量
+            </Label>
+            <Input
+              type="number"
+              min={70}
+              max={100}
+              className={inputClass}
+              value={wm.quality ?? 90}
+              onChange={(e) => setWm((p) => ({ ...p, quality: Number(e.target.value) || 90 }))}
+            />
+            <Description className="mt-1 text-xs text-zinc-500">
+              70-100，仅影响 JPEG 输出
+            </Description>
+          </Field>
+        </div>
+
+        <div className="mt-5 flex justify-end">
+          <button
+            onClick={async () => {
+              setSaving(true);
+              setMessage(null);
+              try {
+                await onSaveWatermark(wm);
+                setMessage({ type: "success", text: "水印设置已保存" });
+                setTimeout(() => setMessage(null), 3000);
+              } catch (e) {
+                setMessage({ type: "error", text: String(e) });
+              } finally {
+                setSaving(false);
+              }
+            }}
+            disabled={saving}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Save className="h-4 w-4" />
+            {saving ? "保存中..." : "保存水印设置"}
           </button>
         </div>
       </Fieldset>

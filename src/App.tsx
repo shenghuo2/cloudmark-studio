@@ -45,7 +45,7 @@ const navItems: { key: Page; label: string; icon: React.ReactNode }[] = [
 ];
 
 function App() {
-  const { config, loading, updateOss } = useConfig();
+  const { config, loading, updateOss, updateWatermark } = useConfig();
   const [page, setPage] = useState<Page>("watermark");
 
   if (loading) {
@@ -137,7 +137,7 @@ function App() {
         {/* Page content — all pages stay mounted to preserve state */}
         <div className="h-[calc(100vh-48px)] overflow-y-auto p-5">
           <div className={page === "watermark" ? "" : "hidden"}>
-            <WatermarkPage ossConfigured={ossConfigured} />
+            <WatermarkPage ossConfigured={ossConfigured} watermarkConfig={config?.watermark ?? null} />
           </div>
           <div className={page === "decode" ? "" : "hidden"}>
             <DecodePage ossConfigured={ossConfigured} />
@@ -152,6 +152,8 @@ function App() {
             <SettingsPanel
               ossConfig={config?.oss ?? null}
               onSaveOss={updateOss}
+              watermarkConfig={config?.watermark ?? null}
+              onSaveWatermark={updateWatermark}
             />
           </div>
         </div>
