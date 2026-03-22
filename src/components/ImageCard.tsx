@@ -1,3 +1,4 @@
+import { useState as useLocalState } from "react";
 import {
   Loader2,
   CheckCircle2,
@@ -5,9 +6,10 @@ import {
   Stamp,
   Trash2,
   Copy,
+  Link,
   Download,
-  ExternalLink,
   CloudOff,
+  Check,
 } from "lucide-react";
 
 export type ImageStatus =
@@ -36,6 +38,7 @@ interface Props {
   onRemove: (id: string) => void;
   onDeleteOss?: (id: string) => void;
   onDownload?: (id: string) => void;
+  onRename?: (id: string, newName: string) => void;
   processLabel?: string;
   processIcon?: React.ReactNode;
 }
@@ -45,7 +48,7 @@ const statusConfig: Record<
   { label: string; color: string; icon: React.ReactNode }
 > = {
   pending: {
-    label: "待处理",
+    label: "已上传",
     color: "text-zinc-500 bg-zinc-100 dark:bg-zinc-800",
     icon: null,
   },
@@ -107,6 +110,7 @@ export default function ImageCard({
   onRemove,
   onDeleteOss,
   onDownload,
+  onRename,
   processLabel = "处理",
   processIcon,
 }: Props) {
@@ -117,10 +121,46 @@ export default function ImageCard({
 
   const hasOssFile = !!(image.watermarkedKey || image.objectKey);
 
+  const [copiedUrl, setCopiedUrl] = useLocalState(false);
+  const [copiedImg, setCopiedImg] = useLocalState(false);
+  const [editing, setEditing] = useLocalState(false);
+  const [editName, setEditName] = useLocalState(image.name);
+
   async function handleCopyUrl() {
     if (image.watermarkedUrl) {
       await navigator.clipboard.writeText(image.watermarkedUrl);
+      setCopiedUrl(true);
+      setTimeout(() => setCopiedUrl(false), 2000);
     }
+  }
+
+  async function handleCopyImage() {
+    if (!image.watermarkedUrl) return;
+    try {
+      const resp = await fetch(image.watermarkedUrl);
+      const blob = await resp.blob();
+      const pngBlob = blob.type === "image/png" ? blob : await toPng(blob);
+      await navigator.clipboard.write([
+        new ClipboardItem({ "image/png": pngBlob }),
+      ]);
+      setCopiedImg(true);
+      setTimeout(() => setCopiedImg(false), 2000);
+    } catch {
+      // fallback: copy URL instead
+      handleCopyUrl();
+    }
+  }
+
+  async function toPng(blob: Blob): Promise<Blob> {
+    const img = new Image();
+    const url = URL.createObjectURL(blob);
+    await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = rej; img.src = url; });
+    const c = document.createElement("canvas");
+    c.width = img.naturalWidth;
+    c.height = img.naturalHeight;
+    c.getContext("2d")!.drawImage(img, 0, 0);
+    URL.revokeObjectURL(url);
+    return new Promise((res) => c.toBlob((b) => res(b!), "image/png"));
   }
 
   return (
@@ -132,9 +172,35 @@ export default function ImageCard({
 
       {/* Info */}
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-zinc-800 dark:text-zinc-200">
-          {image.name}
-        </p>
+        {editing ? (
+          <input
+            className="w-full rounded border border-primary-400 bg-transparent px-1 py-0 text-sm font-medium text-zinc-800 outline-none dark:text-zinc-200"
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+            onBlur={() => {
+              setEditing(false);
+              const trimmed = editName.trim();
+              if (trimmed && trimmed !== image.name && onRename) {
+                onRename(image.id, trimmed);
+              } else {
+                setEditName(image.name);
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+              if (e.key === "Escape") { setEditName(image.name); setEditing(false); }
+            }}
+            autoFocus
+          />
+        ) : (
+          <p
+            className="truncate text-sm font-medium text-zinc-800 dark:text-zinc-200 cursor-default"
+            onDoubleClick={() => { if (onRename) { setEditName(image.name); setEditing(true); } }}
+            title="双击重命名"
+          >
+            {image.name}
+          </p>
+        )}
         <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
           <span
             className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${st.color}`}
@@ -175,14 +241,11 @@ export default function ImageCard({
 
         {image.watermarkedUrl && (
           <>
-            <IconBtn onClick={handleCopyUrl} title="复制外链">
-              <Copy className="h-3.5 w-3.5" />
+            <IconBtn onClick={handleCopyImage} title={copiedImg ? "已复制" : "复制图片到剪切板"}>
+              {copiedImg ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
             </IconBtn>
-            <IconBtn
-              onClick={() => window.open(image.watermarkedUrl, "_blank")}
-              title="打开外链"
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
+            <IconBtn onClick={handleCopyUrl} title={copiedUrl ? "已复制" : "复制外链"}>
+              {copiedUrl ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Link className="h-3.5 w-3.5" />}
             </IconBtn>
           </>
         )}
