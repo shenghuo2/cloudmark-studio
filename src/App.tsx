@@ -5,14 +5,16 @@ import {
   Wrench,
   Settings,
   Loader2,
+  History,
 } from "lucide-react";
 import WatermarkPage from "./components/WatermarkPage";
 import DecodePage from "./components/DecodePage";
 import ToolsPage from "./components/ToolsPage";
 import SettingsPanel from "./components/SettingsPanel";
+import HistoryPage from "./components/HistoryPage";
 import { useConfig } from "./hooks/useConfig";
 
-type Page = "watermark" | "decode" | "tools" | "settings";
+type Page = "watermark" | "decode" | "tools" | "history" | "settings";
 
 const navItems: { key: Page; label: string; icon: React.ReactNode }[] = [
   {
@@ -29,6 +31,11 @@ const navItems: { key: Page; label: string; icon: React.ReactNode }[] = [
     key: "tools",
     label: "图片工具",
     icon: <Wrench className="h-5 w-5" />,
+  },
+  {
+    key: "history",
+    label: "历史记录",
+    icon: <History className="h-5 w-5" />,
   },
   {
     key: "settings",
@@ -127,21 +134,26 @@ function App() {
           </h1>
         </header>
 
-        {/* Page content */}
+        {/* Page content — all pages stay mounted to preserve state */}
         <div className="h-[calc(100vh-48px)] overflow-y-auto p-5">
-          {page === "watermark" && (
+          <div className={page === "watermark" ? "" : "hidden"}>
             <WatermarkPage ossConfigured={ossConfigured} />
-          )}
-          {page === "decode" && (
+          </div>
+          <div className={page === "decode" ? "" : "hidden"}>
             <DecodePage ossConfigured={ossConfigured} />
-          )}
-          {page === "tools" && <ToolsPage />}
-          {page === "settings" && (
+          </div>
+          <div className={page === "tools" ? "" : "hidden"}>
+            <ToolsPage />
+          </div>
+          <div className={page === "history" ? "" : "hidden"}>
+            <HistoryPage />
+          </div>
+          <div className={page === "settings" ? "" : "hidden"}>
             <SettingsPanel
               ossConfig={config?.oss ?? null}
               onSaveOss={updateOss}
             />
-          )}
+          </div>
         </div>
       </main>
     </div>
