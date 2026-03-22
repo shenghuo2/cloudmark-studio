@@ -5,11 +5,14 @@ import {
   Trash2,
   CheckCircle2,
   XCircle,
-  FolderOpen,
   ArrowRight,
+  Stamp,
+  Copy,
+  Check,
 } from "lucide-react";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import DropZone from "./DropZone";
-import { getImageInfo, compressImage } from "../lib/tauri";
+import { getImageInfo, compressImage, getTempDir } from "../lib/tauri";
 import type { ImageInfo, CompressResult } from "../lib/tauri";
 
 type OutputFormat = "original" | "jpeg" | "png" | "webp";
@@ -26,6 +29,11 @@ interface CompressItem {
 
 let nextId = 0;
 
+interface Props {
+  autoSave?: boolean;
+  onSendToWatermark?: (paths: string[]) => void;
+}
+
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -38,6 +46,18 @@ function ratio(original: number, compressed: number): string {
   return `${pct}%`;
 }
 
+async function toPng(blob: Blob): Promise<Blob> {
+  const img = new Image();
+  const url = URL.createObjectURL(blob);
+  await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = rej; img.src = url; });
+  const c = document.createElement("canvas");
+  c.width = img.naturalWidth;
+  c.height = img.naturalHeight;
+  c.getContext("2d")!.drawImage(img, 0, 0);
+  URL.revokeObjectURL(url);
+  return new Promise((res) => c.toBlob((b) => res(b!), "image/png"));
+}
+
 const FORMAT_OPTIONS: { value: OutputFormat; label: string }[] = [
   { value: "original", label: "保持原格式" },
   { value: "jpeg", label: "JPEG" },
@@ -45,7 +65,7 @@ const FORMAT_OPTIONS: { value: OutputFormat; label: string }[] = [
   { value: "webp", label: "WebP" },
 ];
 
-export default function ToolsPage() {
+export default function ToolsPage({ autoSave = false, onSendToWatermark }: Props) {
   const [items, setItems] = useState<CompressItem[]>([]);
   const [format, setFormat] = useState<OutputFormat>("original");
   const [quality, setQuality] = useState(80);
@@ -99,12 +119,14 @@ export default function ToolsPage() {
       );
 
       try {
+        const outputDir = autoSave ? undefined : await getTempDir();
         const result = await compressImage(item.path, {
           format,
           quality,
           pngLevel: format === "png" ? pngLevel : undefined,
           width: resizeW ? parseInt(resizeW) : undefined,
           height: resizeH ? parseInt(resizeH) : undefined,
+          outputDir,
         });
         setItems((prev) =>
           prev.map((i) =>
@@ -119,7 +141,7 @@ export default function ToolsPage() {
         );
       }
     },
-    [format, quality, pngLevel, resizeW, resizeH]
+    [format, quality, pngLevel, resizeW, resizeH, autoSave]
   );
 
   const handleCompressAll = useCallback(async () => {
@@ -135,15 +157,31 @@ export default function ToolsPage() {
     setItems((prev) => prev.filter((i) => i.id !== id));
   }, []);
 
-  const handleOpenOutput = useCallback(async (path: string) => {
-    // Reveal in file manager by opening parent dir
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const handleCopyToClipboard = useCallback(async (item: CompressItem) => {
+    if (!item.result) return;
     try {
-      const { invoke } = await import("@tauri-apps/api/core");
-      await invoke("plugin:shell|open", { path: path.replace(/[^/\\]+$/, "") });
+      const resp = await fetch(convertFileSrc(item.result.output_path));
+      const blob = await resp.blob();
+      const pngBlob = blob.type === "image/png" ? blob : await toPng(blob);
+      await navigator.clipboard.write([
+        new ClipboardItem({ "image/png": pngBlob }),
+      ]);
+      setCopiedId(item.id);
+      setTimeout(() => setCopiedId(null), 2000);
     } catch {
       // fallback: do nothing
     }
   }, []);
+
+  const handleSendToWatermark = useCallback(
+    (item: CompressItem) => {
+      if (!item.result || !onSendToWatermark) return;
+      onSendToWatermark([item.result.output_path]);
+    },
+    [onSendToWatermark]
+  );
 
   const readyCount = items.filter(
     (i) => i.status === "ready" || i.status === "error"
@@ -370,15 +408,28 @@ export default function ToolsPage() {
                   )}
 
                   {item.result && (
-                    <button
-                      onClick={() =>
-                        handleOpenOutput(item.result!.output_path)
-                      }
-                      title="打开输出目录"
-                      className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 transition dark:hover:bg-zinc-700"
-                    >
-                      <FolderOpen className="h-3.5 w-3.5" />
-                    </button>
+                    <>
+                      <button
+                        onClick={() => handleCopyToClipboard(item)}
+                        title={copiedId === item.id ? "已复制" : "复制到剪切板"}
+                        className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 transition dark:hover:bg-zinc-700"
+                      >
+                        {copiedId === item.id ? (
+                          <Check className="h-3.5 w-3.5 text-emerald-500" />
+                        ) : (
+                          <Copy className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                      {onSendToWatermark && (
+                        <button
+                          onClick={() => handleSendToWatermark(item)}
+                          title="发送到添加水印"
+                          className="rounded-lg p-1.5 text-zinc-400 hover:bg-primary-50 hover:text-primary-600 transition dark:hover:bg-primary-900/20"
+                        >
+                          <Stamp className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </>
                   )}
 
                   <button
