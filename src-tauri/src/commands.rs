@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::State;
 
-use crate::config::{AppConfig, OssConfig, WatermarkConfig};
+use crate::config::{AppConfig, CompressConfig, OssConfig, WatermarkConfig};
 use crate::imm::client::ImmClient;
 use crate::oss::client::OssClient;
 use crate::watermark::encode;
@@ -35,6 +35,17 @@ pub fn save_watermark_config(
 ) -> Result<(), String> {
     let mut config = state.config.lock().map_err(|e| e.to_string())?;
     config.watermark = watermark;
+    config.save().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn save_compress_config(
+    state: State<'_, AppState>,
+    compress: CompressConfig,
+) -> Result<(), String> {
+    let mut config = state.config.lock().map_err(|e| e.to_string())?;
+    config.compress = compress;
     config.save().map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -406,6 +417,13 @@ pub async fn download_url_to_temp(url: String) -> Result<String, String> {
 }
 
 // ── Image compression commands ───────────────────────────────────────
+
+#[tauri::command]
+pub fn get_temp_dir() -> String {
+    let dir = std::env::temp_dir().join("cloudmark-compress");
+    let _ = std::fs::create_dir_all(&dir);
+    dir.to_string_lossy().to_string()
+}
 
 #[tauri::command]
 pub async fn get_image_info(path: String) -> Result<crate::imaging::compress::ImageInfo, String> {

@@ -34,9 +34,23 @@ impl Default for WatermarkConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompressConfig {
+    /// Whether to auto-save compressed result next to the original file
+    pub auto_save: bool,
+}
+
+impl Default for CompressConfig {
+    fn default() -> Self {
+        Self { auto_save: false }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub oss: Option<OssConfig>,
     pub watermark: WatermarkConfig,
+    #[serde(default)]
+    pub compress: CompressConfig,
 }
 
 impl Default for AppConfig {
@@ -44,6 +58,7 @@ impl Default for AppConfig {
         Self {
             oss: None,
             watermark: WatermarkConfig::default(),
+            compress: CompressConfig::default(),
         }
     }
 }

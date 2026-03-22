@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
-import type { AppConfig, OssConfig, WatermarkConfig } from "../lib/tauri";
+import type { AppConfig, OssConfig, WatermarkConfig, CompressConfig } from "../lib/tauri";
 import {
   getConfig,
   saveOssConfig,
   saveWatermarkConfig,
+  saveCompressConfig,
 } from "../lib/tauri";
 
 export function useConfig() {
@@ -23,6 +24,7 @@ export function useConfig() {
       setConfig({
         oss: null,
         watermark: { content: "", strength: "low", quality: 90 },
+        compress: { auto_save: false },
       });
       setError(null);
     } finally {
@@ -38,7 +40,7 @@ export function useConfig() {
     async (oss: OssConfig) => {
       await saveOssConfig(oss);
       setConfig((prev) =>
-        prev ? { ...prev, oss } : { oss, watermark: { content: "", strength: "low", quality: 90 } }
+        prev ? { ...prev, oss } : { oss, watermark: { content: "", strength: "low", quality: 90 }, compress: { auto_save: false } }
       );
     },
     []
@@ -48,11 +50,21 @@ export function useConfig() {
     async (watermark: WatermarkConfig) => {
       await saveWatermarkConfig(watermark);
       setConfig((prev) =>
-        prev ? { ...prev, watermark } : { oss: null, watermark }
+        prev ? { ...prev, watermark } : { oss: null, watermark, compress: { auto_save: false } }
       );
     },
     []
   );
 
-  return { config, loading, error, reload: load, updateOss, updateWatermark };
+  const updateCompress = useCallback(
+    async (compress: CompressConfig) => {
+      await saveCompressConfig(compress);
+      setConfig((prev) =>
+        prev ? { ...prev, compress } : { oss: null, watermark: { content: "", strength: "low", quality: 90 }, compress }
+      );
+    },
+    []
+  );
+
+  return { config, loading, error, reload: load, updateOss, updateWatermark, updateCompress };
 }

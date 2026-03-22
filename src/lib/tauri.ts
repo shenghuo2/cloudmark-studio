@@ -18,9 +18,14 @@ export interface WatermarkConfig {
   quality: number | null;
 }
 
+export interface CompressConfig {
+  auto_save: boolean;
+}
+
 export interface AppConfig {
   oss: OssConfig | null;
   watermark: WatermarkConfig;
+  compress: CompressConfig;
 }
 
 export interface UploadResult {
@@ -59,6 +64,12 @@ export async function saveWatermarkConfig(
   watermark: WatermarkConfig
 ): Promise<void> {
   return invoke("save_watermark_config", { watermark });
+}
+
+export async function saveCompressConfig(
+  compress: CompressConfig
+): Promise<void> {
+  return invoke("save_compress_config", { compress });
 }
 
 // ── OSS API ──────────────────────────────────────────────────────────
@@ -144,6 +155,12 @@ export async function getDecodeResult(
 
 export async function downloadUrlToTemp(url: string): Promise<string> {
   return invoke("download_url_to_temp", { url });
+}
+
+// ── Temp Dir API ───────────────────────────────────────────────────
+
+export async function getTempDir(): Promise<string> {
+  return invoke("get_temp_dir");
 }
 
 // ── Image Compression API ───────────────────────────────────────────

@@ -24,6 +24,7 @@ pub fn run() {
             commands::get_config,
             commands::save_oss_config,
             commands::save_watermark_config,
+            commands::save_compress_config,
             commands::upload_to_oss,
             commands::add_watermark,
             commands::download_from_oss,
@@ -32,6 +33,7 @@ pub fn run() {
             commands::decode_watermark,
             commands::get_decode_result,
             commands::download_url_to_temp,
+            commands::get_temp_dir,
             commands::get_image_info,
             commands::compress_image,
         ])
