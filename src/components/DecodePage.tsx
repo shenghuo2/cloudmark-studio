@@ -18,9 +18,10 @@ let nextId = 0;
 
 interface Props {
   ossConfigured: boolean;
+  active?: boolean;
 }
 
-export default function DecodePage({ ossConfigured }: Props) {
+export default function DecodePage({ ossConfigured, active = true }: Props) {
   const [items, setItems] = useState<DecodeItem[]>([]);
   const [strength, setStrength] = useState("low");
 
@@ -187,6 +188,7 @@ export default function DecodePage({ ossConfigured }: Props) {
         onUrlSubmit={handleUrlSubmit}
         disabled={!ossConfigured}
         compact={items.length > 0}
+        active={active}
       />
       {!ossConfigured && (
         <p className="text-center text-xs text-amber-600 dark:text-amber-400">

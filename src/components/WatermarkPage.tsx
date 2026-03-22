@@ -13,9 +13,10 @@ interface Props {
   ossConfigured: boolean;
   watermarkConfig: WatermarkConfig | null;
   externalFiles?: string[];
+  active?: boolean;
 }
 
-export default function WatermarkPage({ ossConfigured, watermarkConfig, externalFiles }: Props) {
+export default function WatermarkPage({ ossConfigured, watermarkConfig, externalFiles, active = true }: Props) {
   const [images, setImages] = useState<ImageItem[]>([]);
   const [watermarkText, setWatermarkText] = useState(
     watermarkConfig?.content || "版权所有CloudMark"
@@ -275,6 +276,7 @@ export default function WatermarkPage({ ossConfigured, watermarkConfig, external
         onUrlSubmit={handleUrlSubmit}
         disabled={!ossConfigured}
         compact={images.length > 0}
+        active={active}
       />
       {!ossConfigured && (
         <p className="text-center text-xs text-amber-600 dark:text-amber-400">

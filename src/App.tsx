@@ -143,15 +143,16 @@ function App() {
         {/* Page content — all pages stay mounted to preserve state */}
         <div className="h-[calc(100vh-48px)] overflow-y-auto p-5">
           <div className={page === "watermark" ? "" : "hidden"}>
-            <WatermarkPage ossConfigured={ossConfigured} watermarkConfig={config?.watermark ?? null} externalFiles={watermarkFiles} />
+            <WatermarkPage ossConfigured={ossConfigured} watermarkConfig={config?.watermark ?? null} externalFiles={watermarkFiles} active={page === "watermark"} />
           </div>
           <div className={page === "decode" ? "" : "hidden"}>
-            <DecodePage ossConfigured={ossConfigured} />
+            <DecodePage ossConfigured={ossConfigured} active={page === "decode"} />
           </div>
           <div className={page === "tools" ? "" : "hidden"}>
             <ToolsPage
               autoSave={config?.compress?.auto_save ?? false}
               onSendToWatermark={handleSendToWatermark}
+              active={page === "tools"}
             />
           </div>
           <div className={page === "history" ? "" : "hidden"}>

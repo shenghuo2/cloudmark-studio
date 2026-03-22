@@ -15,6 +15,7 @@ interface Props {
   onUrlSubmit?: (url: string) => void;
   disabled?: boolean;
   compact?: boolean;
+  active?: boolean;
 }
 
 export default function DropZone({
@@ -22,6 +23,7 @@ export default function DropZone({
   onUrlSubmit,
   disabled,
   compact,
+  active = true,
 }: Props) {
   const [dragging, setDragging] = useState(false);
   const [urlInput, setUrlInput] = useState("");
@@ -29,13 +31,15 @@ export default function DropZone({
   const callbackRef = useRef(onFilesSelected);
   callbackRef.current = onFilesSelected;
   const processedRef = useRef(0);
+  const activeRef = useRef(active);
+  activeRef.current = active;
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
 
     getCurrentWebviewWindow()
       .onDragDropEvent((event) => {
-        if (disabled) return;
+        if (disabled || !activeRef.current) return;
         if (event.payload.type === "over") {
           setDragging(true);
         } else if (event.payload.type === "drop") {

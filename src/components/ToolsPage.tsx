@@ -32,6 +32,7 @@ let nextId = 0;
 interface Props {
   autoSave?: boolean;
   onSendToWatermark?: (paths: string[]) => void;
+  active?: boolean;
 }
 
 function formatBytes(bytes: number): string {
@@ -65,7 +66,7 @@ const FORMAT_OPTIONS: { value: OutputFormat; label: string }[] = [
   { value: "webp", label: "WebP" },
 ];
 
-export default function ToolsPage({ autoSave = false, onSendToWatermark }: Props) {
+export default function ToolsPage({ autoSave = false, onSendToWatermark, active = true }: Props) {
   const [items, setItems] = useState<CompressItem[]>([]);
   const [format, setFormat] = useState<OutputFormat>("original");
   const [quality, setQuality] = useState(80);
@@ -306,6 +307,7 @@ export default function ToolsPage({ autoSave = false, onSendToWatermark }: Props
       <DropZone
         onFilesSelected={handleFilesSelected}
         compact={items.length > 0}
+        active={active}
       />
 
       {/* File list */}
