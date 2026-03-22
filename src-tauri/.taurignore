@@ -1,0 +1,10 @@
+*_compressed*
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.avif
+tests/*.png
+tests/*.jpg
+tests/*.webp
+target/
