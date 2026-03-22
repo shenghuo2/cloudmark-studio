@@ -7,8 +7,9 @@ import {
   Fieldset,
   Legend,
 } from "@headlessui/react";
-import { Save, Eye, EyeOff, CheckCircle2 } from "lucide-react";
+import { Save, Eye, EyeOff, CheckCircle2, Sun, Moon, Monitor } from "lucide-react";
 import type { OssConfig, WatermarkConfig, CompressConfig, DecodeConfig } from "../lib/tauri";
+import type { ThemeMode } from "../hooks/useDarkMode";
 
 interface Props {
   ossConfig: OssConfig | null;
@@ -19,9 +20,11 @@ interface Props {
   onSaveCompress: (c: CompressConfig) => Promise<void>;
   decodeConfig: DecodeConfig | null;
   onSaveDecode: (d: DecodeConfig) => Promise<void>;
+  themeMode: ThemeMode;
+  onSetTheme: (m: ThemeMode) => void;
 }
 
-export default function SettingsPanel({ ossConfig, onSaveOss, watermarkConfig, onSaveWatermark, compressConfig, onSaveCompress, decodeConfig, onSaveDecode }: Props) {
+export default function SettingsPanel({ ossConfig, onSaveOss, watermarkConfig, onSaveWatermark, compressConfig, onSaveCompress, decodeConfig, onSaveDecode, themeMode, onSetTheme }: Props) {
   const [oss, setOss] = useState<OssConfig>({
     access_key_id: "",
     access_key_secret: "",
@@ -362,6 +365,37 @@ export default function SettingsPanel({ ossConfig, onSaveOss, watermarkConfig, o
             <Save className="h-4 w-4" />
             {saving ? "保存中..." : "保存压缩设置"}
           </button>
+        </div>
+      </Fieldset>
+
+      {/* Appearance */}
+      <Fieldset className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-700/60 dark:bg-zinc-900">
+        <Legend className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 px-1">
+          外观
+        </Legend>
+
+        <div className="mt-4">
+          <p className="mb-2 text-xs font-medium text-zinc-600 dark:text-zinc-400">主题模式</p>
+          <div className="flex gap-2">
+            {([
+              { value: "system" as ThemeMode, label: "跟随系统", icon: <Monitor className="h-4 w-4" /> },
+              { value: "light" as ThemeMode, label: "浅色", icon: <Sun className="h-4 w-4" /> },
+              { value: "dark" as ThemeMode, label: "深色", icon: <Moon className="h-4 w-4" /> },
+            ]).map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => onSetTheme(opt.value)}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                  themeMode === opt.value
+                    ? "bg-primary-50 text-primary-700 ring-1 ring-primary-200 dark:bg-primary-900/30 dark:text-primary-400 dark:ring-primary-800"
+                    : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                }`}
+              >
+                {opt.icon}
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
       </Fieldset>
 

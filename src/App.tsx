@@ -13,6 +13,7 @@ import ToolsPage from "./components/ToolsPage";
 import SettingsPanel from "./components/SettingsPanel";
 import HistoryPage from "./components/HistoryPage";
 import { useConfig } from "./hooks/useConfig";
+import { useDarkMode } from "./hooks/useDarkMode";
 
 type Page = "watermark" | "decode" | "tools" | "history" | "settings";
 
@@ -46,6 +47,7 @@ const navItems: { key: Page; label: string; icon: React.ReactNode }[] = [
 
 function App() {
   const { config, loading, updateOss, updateWatermark, updateCompress, updateDecode } = useConfig();
+  const { mode: themeMode, setTheme } = useDarkMode();
   const [page, setPage] = useState<Page>("watermark");
   const [watermarkFiles, setWatermarkFiles] = useState<string[]>([]);
 
@@ -168,6 +170,8 @@ function App() {
               onSaveCompress={updateCompress}
               decodeConfig={config?.decode ?? null}
               onSaveDecode={updateDecode}
+              themeMode={themeMode}
+              onSetTheme={setTheme}
             />
           </div>
         </div>
