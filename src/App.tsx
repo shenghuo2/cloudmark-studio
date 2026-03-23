@@ -6,16 +6,25 @@ import {
   Settings,
   Loader2,
   History,
+  FolderOpen,
 } from "lucide-react";
 import WatermarkPage from "./components/WatermarkPage";
 import DecodePage from "./components/DecodePage";
 import ToolsPage from "./components/ToolsPage";
 import SettingsPanel from "./components/SettingsPanel";
 import HistoryPage from "./components/HistoryPage";
+import OssBrowserPage from "./components/OssBrowserPage";
 import { useConfig } from "./hooks/useConfig";
 import { useDarkMode } from "./hooks/useDarkMode";
+import type { OssObjectRef } from "./lib/tauri";
 
-type Page = "watermark" | "decode" | "tools" | "history" | "settings";
+type Page =
+  | "watermark"
+  | "decode"
+  | "ossBrowser"
+  | "tools"
+  | "history"
+  | "settings";
 
 const navItems: { key: Page; label: string; icon: React.ReactNode }[] = [
   {
@@ -27,6 +36,11 @@ const navItems: { key: Page; label: string; icon: React.ReactNode }[] = [
     key: "decode",
     label: "解码水印",
     icon: <ScanSearch className="h-5 w-5" />,
+  },
+  {
+    key: "ossBrowser",
+    label: "OSS 文件",
+    icon: <FolderOpen className="h-5 w-5" />,
   },
   {
     key: "tools",
@@ -50,10 +64,22 @@ function App() {
   const { mode: themeMode, setTheme } = useDarkMode();
   const [page, setPage] = useState<Page>("watermark");
   const [watermarkFiles, setWatermarkFiles] = useState<string[]>([]);
+  const [watermarkOssObjects, setWatermarkOssObjects] = useState<OssObjectRef[]>([]);
+  const [decodeOssObjects, setDecodeOssObjects] = useState<OssObjectRef[]>([]);
 
   const handleSendToWatermark = useCallback((paths: string[]) => {
     setWatermarkFiles(paths);
     setPage("watermark");
+  }, []);
+
+  const handleSendOssToWatermark = useCallback((items: OssObjectRef[]) => {
+    setWatermarkOssObjects(items);
+    setPage("watermark");
+  }, []);
+
+  const handleSendOssToDecode = useCallback((items: OssObjectRef[]) => {
+    setDecodeOssObjects(items);
+    setPage("decode");
   }, []);
 
   if (loading) {
@@ -74,12 +100,10 @@ function App() {
 
   return (
     <div className="flex h-screen bg-zinc-50 dark:bg-zinc-950">
-      {/* Sidebar */}
       <aside className="flex w-[200px] shrink-0 flex-col border-r border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-        {/* Logo / Title */}
         <div
           data-tauri-drag-region
-          className="flex h-12 items-center gap-2 px-4 border-b border-zinc-100 dark:border-zinc-800"
+          className="flex h-12 items-center gap-2 border-b border-zinc-100 px-4 dark:border-zinc-800"
         >
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary-600 text-white">
             <Stamp className="h-4 w-4" />
@@ -92,8 +116,7 @@ function App() {
           </span>
         </div>
 
-        {/* Nav items */}
-        <nav className="flex-1 px-2 py-3 space-y-0.5">
+        <nav className="flex-1 space-y-0.5 px-2 py-3">
           {navItems.map((item) => (
             <button
               key={item.key}
@@ -110,7 +133,6 @@ function App() {
           ))}
         </nav>
 
-        {/* Status */}
         <div className="border-t border-zinc-100 px-4 py-3 dark:border-zinc-800">
           <div className="flex items-center gap-2">
             <div
@@ -127,9 +149,7 @@ function App() {
         </div>
       </aside>
 
-      {/* Main content */}
       <main className="flex-1 overflow-hidden">
-        {/* Page header */}
         <header
           data-tauri-drag-region
           className="flex h-12 items-center border-b border-zinc-200 px-5 dark:border-zinc-800"
@@ -142,13 +162,31 @@ function App() {
           </h1>
         </header>
 
-        {/* Page content — all pages stay mounted to preserve state */}
         <div className="h-[calc(100vh-48px)] overflow-y-auto p-5">
           <div className={page === "watermark" ? "" : "hidden"}>
-            <WatermarkPage ossConfigured={ossConfigured} watermarkConfig={config?.watermark ?? null} externalFiles={watermarkFiles} active={page === "watermark"} />
+            <WatermarkPage
+              ossConfigured={ossConfigured}
+              watermarkConfig={config?.watermark ?? null}
+              externalFiles={watermarkFiles}
+              externalOssObjects={watermarkOssObjects}
+              active={page === "watermark"}
+            />
           </div>
           <div className={page === "decode" ? "" : "hidden"}>
-            <DecodePage ossConfigured={ossConfigured} active={page === "decode"} autoDelete={config?.decode?.auto_delete ?? true} />
+            <DecodePage
+              ossConfigured={ossConfigured}
+              active={page === "decode"}
+              autoDelete={config?.decode?.auto_delete ?? true}
+              externalOssObjects={decodeOssObjects}
+            />
+          </div>
+          <div className={page === "ossBrowser" ? "" : "hidden"}>
+            <OssBrowserPage
+              ossConfigured={ossConfigured}
+              onSendToWatermark={handleSendOssToWatermark}
+              onSendToDecode={handleSendOssToDecode}
+              active={page === "ossBrowser"}
+            />
           </div>
           <div className={page === "tools" ? "" : "hidden"}>
             <ToolsPage

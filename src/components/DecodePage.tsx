@@ -1,8 +1,15 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { ScanSearch, Loader2, ImageOff } from "lucide-react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import DropZone from "./DropZone";
-import { uploadToOss, decodeWatermark, getDecodeResult, downloadUrlToTemp, deleteFromOss } from "../lib/tauri";
+import {
+  uploadToOss,
+  decodeWatermark,
+  getDecodeResult,
+  downloadUrlToTemp,
+  deleteFromOss,
+} from "../lib/tauri";
+import type { OssObjectRef } from "../lib/tauri";
 import { pushHistory } from "./HistoryPage";
 
 interface DecodeItem {
@@ -14,6 +21,7 @@ interface DecodeItem {
   result?: string;
   objectKey?: string;
   progress?: number;
+  preserveSource?: boolean;
 }
 
 let nextId = 0;
@@ -22,6 +30,7 @@ interface Props {
   ossConfigured: boolean;
   active?: boolean;
   autoDelete?: boolean;
+  externalOssObjects?: OssObjectRef[];
 }
 
 function DecodeThumbnail({ path, busy }: { path: string; busy: boolean }) {
@@ -49,40 +58,65 @@ function DecodeThumbnail({ path, busy }: { path: string; busy: boolean }) {
       src={src}
       alt=""
       onError={() => setFailed(true)}
-      className="h-10 w-10 shrink-0 rounded-lg object-cover bg-purple-50 dark:bg-purple-900/20"
+      className="h-10 w-10 shrink-0 rounded-lg bg-purple-50 object-cover dark:bg-purple-900/20"
     />
   );
 }
 
-export default function DecodePage({ ossConfigured, active = true, autoDelete = true }: Props) {
+export default function DecodePage({
+  ossConfigured,
+  active = true,
+  autoDelete = true,
+  externalOssObjects,
+}: Props) {
   const [items, setItems] = useState<DecodeItem[]>([]);
   const [strength, setStrength] = useState("low");
 
   const itemsRef = useRef(items);
   itemsRef.current = items;
 
-  const updateItem = useCallback(
-    (id: string, patch: Partial<DecodeItem>) => {
-      setItems((prev) =>
-        prev.map((item) => (item.id === id ? { ...item, ...patch } : item))
-      );
-    },
-    []
-  );
+  const updateItem = useCallback((id: string, patch: Partial<DecodeItem>) => {
+    setItems((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, ...patch } : item))
+    );
+  }, []);
 
-  // Auto-upload a single item to OSS
   const autoUpload = useCallback(
     async (id: string, localPath: string) => {
       updateItem(id, { status: "uploading", error: undefined });
       try {
         const upload = await uploadToOss(localPath);
-        updateItem(id, { status: "pending", objectKey: upload.object_key });
+        updateItem(id, {
+          status: "pending",
+          objectKey: upload.object_key,
+          preserveSource: false,
+        });
       } catch (e) {
         updateItem(id, { status: "error", error: `上传失败: ${e}` });
       }
     },
     [updateItem]
   );
+
+  const processedExternalOssRef = useRef<OssObjectRef[] | undefined>(undefined);
+  useEffect(() => {
+    if (
+      externalOssObjects &&
+      externalOssObjects.length > 0 &&
+      externalOssObjects !== processedExternalOssRef.current
+    ) {
+      processedExternalOssRef.current = externalOssObjects;
+      const newItems: DecodeItem[] = externalOssObjects.map((item) => ({
+        id: String(++nextId),
+        name: item.name,
+        path: item.url,
+        status: "pending" as const,
+        objectKey: item.objectKey,
+        preserveSource: true,
+      }));
+      setItems((prev) => [...prev, ...newItems]);
+    }
+  }, [externalOssObjects]);
 
   const handleFilesSelected = useCallback(
     (paths: string[]) => {
@@ -91,6 +125,7 @@ export default function DecodePage({ ossConfigured, active = true, autoDelete = 
         name: p.split("/").pop() ?? p.split("\\").pop() ?? p,
         path: p,
         status: "uploading" as const,
+        preserveSource: false,
       }));
       setItems((prev) => [...prev, ...newItems]);
       for (const item of newItems) {
@@ -106,13 +141,18 @@ export default function DecodePage({ ossConfigured, active = true, autoDelete = 
       const id = String(++nextId);
       setItems((prev) => [
         ...prev,
-        { id, name, path: url, status: "uploading" as const },
+        { id, name, path: url, status: "uploading" as const, preserveSource: false },
       ]);
       (async () => {
         try {
           const tempPath = await downloadUrlToTemp(url);
           const upload = await uploadToOss(tempPath);
-          updateItem(id, { status: "pending", path: tempPath, objectKey: upload.object_key });
+          updateItem(id, {
+            status: "pending",
+            path: tempPath,
+            objectKey: upload.object_key,
+            preserveSource: false,
+          });
         } catch (e) {
           updateItem(id, { status: "error", error: `获取失败: ${e}` });
         }
@@ -127,7 +167,6 @@ export default function DecodePage({ ossConfigured, active = true, autoDelete = 
       if (!item) return;
 
       const objectKey = item.objectKey;
-
       if (!objectKey) {
         updateItem(id, { status: "error", error: "图片尚未上传完成" });
         return;
@@ -136,8 +175,6 @@ export default function DecodePage({ ossConfigured, active = true, autoDelete = 
       updateItem(id, { status: "decoding", error: undefined });
       try {
         const submit = await decodeWatermark(objectKey, strength);
-
-        // Poll for result (max 60s)
         const maxPolls = 30;
         for (let i = 0; i < maxPolls; i++) {
           await new Promise((r) => setTimeout(r, 2000));
@@ -152,13 +189,16 @@ export default function DecodePage({ ossConfigured, active = true, autoDelete = 
             pushHistory({
               type: "decode",
               name: item.name,
-              url: "",
+              url: item.path.startsWith("http") ? item.path : "",
               decodedText: content,
-              objectKey: objectKey,
+              objectKey,
             });
-            // Auto-delete OSS file after successful decode
-            if (autoDelete && objectKey) {
-              try { await deleteFromOss(objectKey); } catch { /* ignore */ }
+            if (autoDelete && objectKey && !item.preserveSource) {
+              try {
+                await deleteFromOss(objectKey);
+              } catch {
+                // ignore cleanup failures for temp uploads
+              }
               updateItem(id, { objectKey: undefined });
             }
             return;
@@ -176,7 +216,7 @@ export default function DecodePage({ ossConfigured, active = true, autoDelete = 
         updateItem(id, { status: "error", error: String(e) });
       }
     },
-    [updateItem, strength]
+    [autoDelete, strength, updateItem]
   );
 
   const handleRemove = useCallback((id: string) => {
@@ -201,7 +241,6 @@ export default function DecodePage({ ossConfigured, active = true, autoDelete = 
 
   return (
     <div className="flex h-full flex-col gap-4">
-      {/* Settings bar */}
       <div className="flex items-end gap-3 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700/60 dark:bg-zinc-900">
         <div className="w-32">
           <label className="mb-1 block text-xs font-medium text-zinc-500 dark:text-zinc-400">
@@ -217,12 +256,11 @@ export default function DecodePage({ ossConfigured, active = true, autoDelete = 
             <option value="high">高</option>
           </select>
         </div>
-        <p className="text-xs text-zinc-400 pb-1">
+        <p className="pb-1 text-xs text-zinc-400">
           强度需要与加水印时的强度一致
         </p>
       </div>
 
-      {/* Drop zone */}
       <DropZone
         onFilesSelected={handleFilesSelected}
         onUrlSubmit={handleUrlSubmit}
@@ -236,7 +274,6 @@ export default function DecodePage({ ossConfigured, active = true, autoDelete = 
         </p>
       )}
 
-      {/* Results */}
       {items.length > 0 && (
         <div className="flex-1 space-y-1.5 overflow-y-auto">
           {items.map((item) => {
@@ -256,13 +293,11 @@ export default function DecodePage({ ossConfigured, active = true, autoDelete = 
                     <span
                       className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${statusColors[item.status]}`}
                     >
-                      {busy && (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      )}
+                      {busy && <Loader2 className="h-3 w-3 animate-spin" />}
                       {statusLabels[item.status]}
                     </span>
                     {item.error && (
-                      <span className="truncate text-[11px] text-red-500 max-w-[300px]">
+                      <span className="max-w-[300px] truncate text-[11px] text-red-500">
                         {item.error}
                       </span>
                     )}
@@ -273,7 +308,7 @@ export default function DecodePage({ ossConfigured, active = true, autoDelete = 
                     )}
                   </div>
                   {item.status === "decoding" && item.progress != null && (
-                    <div className="mt-1.5 h-1 w-full rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden">
+                    <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
                       <div
                         className="h-full rounded-full bg-purple-500 transition-all duration-500 ease-out"
                         style={{ width: `${item.progress}%` }}
@@ -282,12 +317,12 @@ export default function DecodePage({ ossConfigured, active = true, autoDelete = 
                   )}
                 </div>
 
-                <div className="flex shrink-0 items-center gap-1 opacity-70 group-hover:opacity-100 transition-opacity">
+                <div className="flex shrink-0 items-center gap-1 opacity-70 transition-opacity group-hover:opacity-100">
                   {(item.status === "pending" || item.status === "error") && (
                     <button
                       onClick={() => handleDecode(item.id)}
                       disabled={busy}
-                      className="inline-flex items-center gap-1 rounded-lg bg-purple-600 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-purple-700 disabled:opacity-40 transition"
+                      className="inline-flex items-center gap-1 rounded-lg bg-purple-600 px-2.5 py-1 text-[11px] font-medium text-white transition hover:bg-purple-700 disabled:opacity-40"
                     >
                       <ScanSearch className="h-3.5 w-3.5" />
                       解析水印
@@ -296,7 +331,7 @@ export default function DecodePage({ ossConfigured, active = true, autoDelete = 
                   <button
                     onClick={() => handleRemove(item.id)}
                     disabled={busy}
-                    className="rounded-lg p-1.5 text-zinc-400 hover:bg-red-50 hover:text-red-500 transition disabled:opacity-30 dark:hover:bg-red-900/20"
+                    className="rounded-lg p-1.5 text-zinc-400 transition hover:bg-red-50 hover:text-red-500 disabled:opacity-30 dark:hover:bg-red-900/20"
                     title="移除"
                   >
                     <span className="text-xs">✕</span>
@@ -310,7 +345,7 @@ export default function DecodePage({ ossConfigured, active = true, autoDelete = 
 
       {items.length === 0 && ossConfigured && (
         <div className="flex flex-1 items-center justify-center text-sm text-zinc-400">
-          上传含有盲水印的图片进行解析
+          上传本地图片，或从 OSS 文件页发送对象进行解析
         </div>
       )}
     </div>

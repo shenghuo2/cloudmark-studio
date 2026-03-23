@@ -55,6 +55,33 @@ export interface DecodeResult {
   message: string | null;
 }
 
+export interface OssObjectEntry {
+  key: string;
+  name: string;
+  size: number;
+  last_modified: string | null;
+  url: string;
+}
+
+export interface OssPrefixEntry {
+  prefix: string;
+  name: string;
+}
+
+export interface ListOssObjectsResult {
+  prefix: string;
+  objects: OssObjectEntry[];
+  prefixes: OssPrefixEntry[];
+  next_continuation_token: string | null;
+  is_truncated: boolean;
+}
+
+export interface OssObjectRef {
+  objectKey: string;
+  name: string;
+  url: string;
+}
+
 // ── Config API ───────────────────────────────────────────────────────
 
 export async function getConfig(): Promise<AppConfig> {
@@ -92,6 +119,20 @@ export async function uploadToOss(
   return invoke("upload_to_oss", {
     filePath,
     objectKey: objectKey ?? null,
+  });
+}
+
+export async function listOssObjects(opts?: {
+  prefix?: string;
+  continuationToken?: string;
+  delimiter?: string;
+  maxKeys?: number;
+}): Promise<ListOssObjectsResult> {
+  return invoke("list_oss_objects", {
+    prefix: opts?.prefix ?? null,
+    continuationToken: opts?.continuationToken ?? null,
+    delimiter: opts?.delimiter ?? "/",
+    maxKeys: opts?.maxKeys ?? 200,
   });
 }
 

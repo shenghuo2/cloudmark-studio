@@ -108,6 +108,46 @@ pub async fn upload_to_oss(
     })
 }
 
+#[tauri::command]
+pub async fn list_oss_objects(
+    state: State<'_ , AppState>,
+    prefix: Option<String>,
+    continuation_token: Option<String>,
+    delimiter: Option<String>,
+    max_keys: Option<u32>,
+) -> Result<crate::oss::client::ListObjectsResult, String> {
+    let oss_config = {
+        let cfg = state.config.lock().map_err(|e| e.to_string())?;
+        cfg.oss
+            .clone()
+            .ok_or_else(|| "OSS not configured".to_string())?
+    };
+
+    let normalized_prefix = prefix
+        .unwrap_or_default()
+        .trim()
+        .trim_start_matches('/')
+        .to_string();
+    let normalized_prefix = if normalized_prefix.is_empty() {
+        String::new()
+    } else if normalized_prefix.ends_with('/') {
+        normalized_prefix
+    } else {
+        format!("{}/", normalized_prefix)
+    };
+
+    let client = OssClient::new(oss_config);
+    client
+        .list_objects(
+            Some(normalized_prefix.as_str()),
+            delimiter.as_deref(),
+            continuation_token.as_deref(),
+            max_keys,
+        )
+        .await
+        .map_err(|e| format!("List OSS objects failed: {}", e))
+}
+
 // ── Watermark commands ───────────────────────────────────────────────
 
 #[derive(serde::Serialize)]

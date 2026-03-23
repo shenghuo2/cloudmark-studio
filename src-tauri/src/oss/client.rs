@@ -13,6 +13,30 @@ pub struct DecodeWatermarkResult {
     pub raw_response: String,
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct OssObjectSummary {
+    pub key: String,
+    pub name: String,
+    pub size: u64,
+    pub last_modified: Option<String>,
+    pub url: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct OssPrefixSummary {
+    pub prefix: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ListObjectsResult {
+    pub prefix: String,
+    pub objects: Vec<OssObjectSummary>,
+    pub prefixes: Vec<OssPrefixSummary>,
+    pub next_continuation_token: Option<String>,
+    pub is_truncated: bool,
+}
+
 /// Alibaba Cloud OSS client.
 #[derive(Debug, Clone)]
 pub struct OssClient {
@@ -172,6 +196,110 @@ impl OssClient {
         }
 
         Ok(resp.bytes().await?.to_vec())
+    }
+
+    /// List objects and common prefixes under a prefix.
+    pub async fn list_objects(
+        &self,
+        prefix: Option<&str>,
+        delimiter: Option<&str>,
+        continuation_token: Option<&str>,
+        max_keys: Option<u32>,
+    ) -> Result<ListObjectsResult> {
+        let prefix = prefix.unwrap_or("");
+        let delimiter = delimiter.unwrap_or("/");
+        let max_keys = max_keys.unwrap_or(200).clamp(1, 1000);
+
+        let mut params = vec![
+            ("delimiter".to_string(), delimiter.to_string()),
+            ("list-type".to_string(), "2".to_string()),
+            ("max-keys".to_string(), max_keys.to_string()),
+        ];
+        if !prefix.is_empty() {
+            params.push(("prefix".to_string(), prefix.to_string()));
+        }
+        if let Some(token) = continuation_token.filter(|token| !token.is_empty()) {
+            params.push(("continuation-token".to_string(), token.to_string()));
+        }
+        params.sort_by(|a, b| a.0.cmp(&b.0));
+
+        let query = build_query(&params);
+        let date = sign::http_date();
+        // Bucket listing signs the bucket resource itself; list query params are not included
+        // in the OSS V1 canonicalized resource string.
+        let resource = format!("/{}/", self.config.bucket);
+
+        let signature = sign::sign_v1(
+            &self.config.access_key_secret,
+            "GET",
+            "",
+            "",
+            &date,
+            "",
+            &resource,
+        );
+
+        let url = format!("https://{}/?{}", self.bucket_host(), query);
+        let resp = self
+            .http
+            .get(&url)
+            .header(DATE, &date)
+            .header(AUTHORIZATION, self.authorization(&signature))
+            .send()
+            .await
+            .with_context(|| format!("Failed to list OSS objects for prefix: {}", prefix))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            anyhow::bail!("OSS list failed ({}): {}", status, body);
+        }
+
+        let body = resp.text().await?;
+        let next_continuation_token = extract_tag(&body, "NextContinuationToken");
+        let is_truncated = extract_tag(&body, "IsTruncated")
+            .map(|value| value.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+
+        let prefixes = extract_blocks(&body, "CommonPrefixes")
+            .into_iter()
+            .filter_map(|block| extract_tag(&block, "Prefix"))
+            .filter(|item_prefix| !item_prefix.is_empty())
+            .map(|item_prefix| OssPrefixSummary {
+                name: display_name_for_prefix(prefix, &item_prefix),
+                prefix: item_prefix,
+            })
+            .collect();
+
+        let objects = extract_blocks(&body, "Contents")
+            .into_iter()
+            .filter_map(|block| {
+                let key = extract_tag(&block, "Key")?;
+                if key.is_empty() || key.ends_with('/') {
+                    return None;
+                }
+
+                let size = extract_tag(&block, "Size")
+                    .and_then(|value| value.parse::<u64>().ok())
+                    .unwrap_or(0);
+
+                Some(OssObjectSummary {
+                    name: display_name_for_key(prefix, &key),
+                    url: self.public_url(&key),
+                    key,
+                    size,
+                    last_modified: extract_tag(&block, "LastModified"),
+                })
+            })
+            .collect();
+
+        Ok(ListObjectsResult {
+            prefix: prefix.to_string(),
+            objects,
+            prefixes,
+            next_continuation_token,
+            is_truncated,
+        })
     }
 
     /// Add blind watermark to an image already uploaded to OSS.
@@ -388,6 +516,75 @@ impl OssClient {
 
         Ok(())
     }
+}
+
+fn build_query(params: &[(String, String)]) -> String {
+    params
+        .iter()
+        .map(|(key, value)| format!("{}={}", urlencoding(key), urlencoding(value)))
+        .collect::<Vec<_>>()
+        .join("&")
+}
+
+fn display_name_for_key(current_prefix: &str, key: &str) -> String {
+    let relative = key.strip_prefix(current_prefix).unwrap_or(key);
+    relative
+        .trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .unwrap_or(relative)
+        .to_string()
+}
+
+fn display_name_for_prefix(current_prefix: &str, prefix: &str) -> String {
+    let relative = prefix.strip_prefix(current_prefix).unwrap_or(prefix);
+    relative
+        .trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .unwrap_or(relative)
+        .to_string()
+}
+
+fn extract_blocks(xml: &str, tag: &str) -> Vec<String> {
+    let open = format!("<{}>", tag);
+    let close = format!("</{}>", tag);
+    let mut out = Vec::new();
+    let mut start = 0;
+
+    while let Some(open_pos) = xml[start..].find(&open) {
+        let content_start = start + open_pos + open.len();
+        if let Some(close_pos) = xml[content_start..].find(&close) {
+            let end = content_start + close_pos;
+            out.push(xml[content_start..end].to_string());
+            start = end + close.len();
+        } else {
+            break;
+        }
+    }
+
+    out
+}
+
+fn extract_tag(xml: &str, tag: &str) -> Option<String> {
+    let open = format!("<{}>", tag);
+    let close = format!("</{}>", tag);
+    let start = xml.find(&open)? + open.len();
+    let end = xml[start..].find(&close)? + start;
+    Some(xml_unescape(&xml[start..end]))
+}
+
+fn xml_unescape(value: &str) -> String {
+    value
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+}
+
+fn urlencoding(s: &str) -> String {
+    url::form_urlencoded::byte_serialize(s.as_bytes()).collect()
 }
 
 /// Guess MIME type from file extension.

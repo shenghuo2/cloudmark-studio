@@ -32,6 +32,7 @@ export interface ImageItem {
   watermarkedKey?: string;
   watermarkedUrl?: string;
   decodedText?: string;
+  preserveSource?: boolean;
 }
 
 interface Props {

@@ -27,6 +27,7 @@ pub fn run() {
             commands::save_compress_config,
             commands::save_decode_config,
             commands::upload_to_oss,
+            commands::list_oss_objects,
             commands::add_watermark,
             commands::download_from_oss,
             commands::delete_from_oss,
