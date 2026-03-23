@@ -12,6 +12,15 @@ pub struct AppState {
     pub config: Mutex<AppConfig>,
 }
 
+fn short_hex_id() -> String {
+    uuid::Uuid::new_v4()
+        .simple()
+        .to_string()
+        .chars()
+        .take(8)
+        .collect()
+}
+
 // ── Config commands ──────────────────────────────────────────────────
 
 #[tauri::command]
@@ -91,8 +100,8 @@ pub async fn upload_to_oss(
     let key = object_key.unwrap_or_else(|| {
         let prefix = config.path_prefix.as_deref().unwrap_or("");
         let filename = path.file_name().unwrap().to_str().unwrap();
-        let uuid = uuid::Uuid::new_v4();
-        format!("{}{}-{}", prefix, uuid, filename)
+        let short_id = short_hex_id();
+        format!("{}{}-{}", prefix, short_id, filename)
     });
 
     let client = OssClient::new(config);
@@ -196,7 +205,7 @@ pub async fn add_watermark(
 
     let client = OssClient::new(oss_config.clone());
     let prefix = oss_config.path_prefix.as_deref().unwrap_or("");
-    let uuid = uuid::Uuid::new_v4();
+    let short_id = short_hex_id();
 
     // Determine source_key: use existing object_key or upload local file
     let source_key = if let Some(key) = object_key {
@@ -207,7 +216,7 @@ pub async fn add_watermark(
             return Err(format!("File not found: {}", fp));
         }
         let filename = path.file_name().unwrap().to_str().unwrap();
-        let key = format!("{}__tmp/{}-{}", prefix, uuid, filename);
+        let key = format!("{}__tmp/{}-{}", prefix, short_id, filename);
         client
             .upload_file(&path, &key)
             .await
@@ -219,7 +228,7 @@ pub async fn add_watermark(
 
     // Derive output filename from source_key
     let source_filename = source_key.split('/').last().unwrap_or(&source_key);
-    let output_key = format!("{}watermarked/{}-{}", prefix, uuid, source_filename);
+    let output_key = format!("{}watermarked/{}-{}", prefix, short_id, source_filename);
 
     // Add blind watermark
     let result = client
