@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import {
   Loader2,
   Download,
@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import DropZone from "./DropZone";
-import { getImageInfo, compressImage, getTempDir } from "../lib/tauri";
+import { getImageInfo, compressImage, getTempDir, downloadUrlToTemp } from "../lib/tauri";
 import type { ImageInfo, CompressResult } from "../lib/tauri";
 
 type OutputFormat = "original" | "jpeg" | "png" | "webp";
@@ -42,8 +42,9 @@ function formatBytes(bytes: number): string {
 
 function ratio(original: number, compressed: number): string {
   if (original === 0) return "—";
-  const pct = ((1 - compressed / original) * 100).toFixed(1);
-  return `${pct}%`;
+  const delta = ((compressed - original) / original) * 100;
+  if (Math.abs(delta) < 0.05) return "0.0%";
+  return `${delta > 0 ? "+" : "-"}${Math.abs(delta).toFixed(1)}%`;
 }
 
 async function toPng(blob: Blob): Promise<Blob> {
@@ -67,7 +68,11 @@ const FORMAT_OPTIONS: { value: OutputFormat; label: string }[] = [
 
 function CompressThumbnail({ path, busy }: { path: string; busy: boolean }) {
   const [failed, setFailed] = useState(false);
-  const src = convertFileSrc(path);
+  const src = path.startsWith("http") ? path : convertFileSrc(path);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [src]);
 
   if (busy && !path) {
     return (
@@ -106,6 +111,27 @@ export default function ToolsPage({ autoSave = false, onSendToWatermark, active 
   const itemsRef = useRef(items);
   itemsRef.current = items;
 
+  const loadItems = useCallback(async (entries: Array<{ id: string; path: string }>) => {
+    for (const entry of entries) {
+      try {
+        const info = await getImageInfo(entry.path);
+        setItems((prev) =>
+          prev.map((i) =>
+            i.id === entry.id ? { ...i, info, status: "ready" } : i
+          )
+        );
+      } catch (e) {
+        setItems((prev) =>
+          prev.map((i) =>
+            i.id === entry.id
+              ? { ...i, status: "error", error: String(e) }
+              : i
+          )
+        );
+      }
+    }
+  }, []);
+
   const handleFilesSelected = useCallback(async (paths: string[]) => {
     const newItems: CompressItem[] = paths.map((p) => ({
       id: String(++nextId),
@@ -115,27 +141,43 @@ export default function ToolsPage({ autoSave = false, onSendToWatermark, active 
       status: "loading" as const,
     }));
     setItems((prev) => [...prev, ...newItems]);
+    await loadItems(newItems.map((item) => ({ id: item.id, path: item.path })));
+  }, [loadItems]);
 
-    // Load image info for each
-    for (const item of newItems) {
+  const handleUrlSubmit = useCallback((url: string) => {
+    const name = url.split("/").pop()?.split("?")[0] || "url-image";
+    const id = String(++nextId);
+    setItems((prev) => [
+      ...prev,
+      {
+        id,
+        name,
+        path: url,
+        info: null,
+        status: "loading" as const,
+      },
+    ]);
+
+    (async () => {
       try {
-        const info = await getImageInfo(item.path);
+        const tempPath = await downloadUrlToTemp(url);
         setItems((prev) =>
-          prev.map((i) =>
-            i.id === item.id ? { ...i, info, status: "ready" } : i
+          prev.map((item) =>
+            item.id === id ? { ...item, path: tempPath } : item
           )
         );
+        await loadItems([{ id, path: tempPath }]);
       } catch (e) {
         setItems((prev) =>
-          prev.map((i) =>
-            i.id === item.id
-              ? { ...i, status: "error", error: String(e) }
-              : i
+          prev.map((item) =>
+            item.id === id
+              ? { ...item, status: "error", error: "获取失败: " + String(e) }
+              : item
           )
         );
       }
-    }
-  }, []);
+    })();
+  }, [loadItems]);
 
   const handleCompress = useCallback(
     async (id: string) => {
@@ -335,6 +377,7 @@ export default function ToolsPage({ autoSave = false, onSendToWatermark, active 
       {/* Drop zone */}
       <DropZone
         onFilesSelected={handleFilesSelected}
+        onUrlSubmit={handleUrlSubmit}
         compact={items.length > 0}
         active={active}
       />
@@ -391,7 +434,6 @@ export default function ToolsPage({ autoSave = false, onSendToWatermark, active 
                               : "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
                           }`}
                         >
-                          -
                           {ratio(
                             item.info?.file_size ?? 0,
                             item.result.compressed_size

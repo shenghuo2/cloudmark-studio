@@ -211,11 +211,7 @@ export default function WatermarkPage({
       try {
         if (img.watermarkedKey) await deleteFromOss(img.watermarkedKey);
         if (img.objectKey && !img.preserveSource) await deleteFromOss(img.objectKey);
-        updateImage(id, {
-          watermarkedKey: undefined,
-          watermarkedUrl: undefined,
-          status: "pending",
-        });
+        setImages((prev) => prev.filter((item) => item.id !== id));
       } catch (e) {
         updateImage(id, { error: `删除失败: ${e}` });
       }
