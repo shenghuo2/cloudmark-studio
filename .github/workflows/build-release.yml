@@ -1,0 +1,119 @@
+name: Build And Release Desktop
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag in vX.Y.Z format
+        required: true
+        type: string
+
+jobs:
+  validate-tag:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.validate.outputs.tag }}
+      version: ${{ steps.validate.outputs.version }}
+    steps:
+      - name: Validate tag format
+        id: validate
+        shell: bash
+        run: |
+          TAG='${{ github.event.inputs.tag }}'
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Tag must match vX.Y.Z, got: $TAG" >&2
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: validate-tag
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-22.04
+            bundle_name: linux-elf
+            args: ""
+          - platform: windows-latest
+            bundle_name: windows-exe
+            args: ""
+          - platform: macos-latest
+            bundle_name: macos-dmg
+            args: ""
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Sync app version from tag
+        shell: bash
+        env:
+          APP_VERSION: ${{ needs.validate-tag.outputs.version }}
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+
+          const appVersion = process.env.APP_VERSION;
+          if (!appVersion) {
+            throw new Error('APP_VERSION is missing');
+          }
+
+          const packageJsonPath = 'package.json';
+          const tauriConfigPath = 'src-tauri/tauri.conf.json';
+          const cargoTomlPath = 'src-tauri/Cargo.toml';
+
+          const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+          packageJson.version = appVersion;
+          fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
+
+          const tauriConfig = JSON.parse(fs.readFileSync(tauriConfigPath, 'utf8'));
+          tauriConfig.version = appVersion;
+          fs.writeFileSync(tauriConfigPath, `${JSON.stringify(tauriConfig, null, 2)}\n`);
+
+          let cargoToml = fs.readFileSync(cargoTomlPath, 'utf8');
+          cargoToml = cargoToml.replace(
+            /^version = ".*"$/m,
+            `version = "${appVersion}"`
+          );
+          fs.writeFileSync(cargoTomlPath, cargoToml);
+          NODE
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and publish bundles
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ needs.validate-tag.outputs.tag }}
+          releaseName: CloudMark Studio ${{ needs.validate-tag.outputs.tag }}
+          releaseBody: |
+            Automated desktop release for ${{ needs.validate-tag.outputs.tag }}.
+
+            Assets in this release include Linux ELF / bundle artifacts, Windows EXE installers, and macOS DMG bundles.
+          releaseCommitish: ${{ github.sha }}
+          releaseDraft: false
+          prerelease: false
+          generateReleaseNotes: true
+          args: ${{ matrix.args }}

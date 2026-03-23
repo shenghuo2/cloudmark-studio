@@ -484,6 +484,10 @@ export default function SettingsPanel({ ossConfig, onSaveOss, watermarkConfig, o
           </button>
         </div>
       </Fieldset>
+
+      <div className="pb-1 pt-2 text-center text-xs text-zinc-400 dark:text-zinc-500">
+        designed by shenghuo2
+      </div>
     </div>
   );
 }

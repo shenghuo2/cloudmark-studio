@@ -59,6 +59,8 @@ const navItems: { key: Page; label: string; icon: React.ReactNode }[] = [
   },
 ];
 
+const GITHUB_URL = "https://github.com/shenghuo2/cloudmark-studio";
+
 function App() {
   const { config, loading, updateOss, updateWatermark, updateCompress, updateDecode } = useConfig();
   const { mode: themeMode, setTheme } = useDarkMode();
@@ -97,6 +99,7 @@ function App() {
     config?.oss?.bucket &&
     config?.oss?.region
   );
+  const appVersion = `v${__APP_VERSION__}`;
 
   return (
     <div className="flex h-screen bg-zinc-50 dark:bg-zinc-950">
@@ -132,6 +135,18 @@ function App() {
             </button>
           ))}
         </nav>
+        <div className="px-4 pb-2 pt-1">
+          <div className="flex justify-center">
+            <a
+              href={GITHUB_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="text-center text-xs font-medium text-zinc-500 transition hover:text-primary-600 dark:text-zinc-400 dark:hover:text-primary-400"
+            >
+              {appVersion}
+            </a>
+          </div>
+        </div>
 
         <div className="border-t border-zinc-100 px-4 py-3 dark:border-zinc-800">
           <div className="flex items-center gap-2">
