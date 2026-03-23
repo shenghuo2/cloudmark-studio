@@ -1,4 +1,5 @@
 use chrono::Local;
+use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
@@ -12,6 +13,8 @@ use crate::watermark::encode;
 /// Shared app state managed by Tauri.
 pub struct AppState {
     pub config: Mutex<AppConfig>,
+    #[cfg(target_os = "linux")]
+    pub clipboard: Mutex<Option<arboard::Clipboard>>,
 }
 
 const DEFAULT_RENAME_TEMPLATE: &str = "{date}-{name}-watermarked-{n}";
@@ -111,6 +114,34 @@ fn output_file_name_from_template(template: &str, source_name: &str) -> String {
     }
 }
 
+async fn load_image_bytes(image_source: &str) -> Result<Vec<u8>, String> {
+    if image_source.starts_with("http://") || image_source.starts_with("https://") {
+        let client = reqwest::Client::builder()
+            .user_agent("CloudMark/0.1")
+            .build()
+            .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))?;
+
+        let resp = client
+            .get(image_source)
+            .send()
+            .await
+            .map_err(|e| format!("下载图片失败: {}", e))?;
+
+        if !resp.status().is_success() {
+            return Err(format!("下载图片失败: HTTP {}", resp.status()));
+        }
+
+        resp.bytes()
+            .await
+            .map(|bytes| bytes.to_vec())
+            .map_err(|e| format!("读取图片失败: {}", e))
+    } else {
+        tokio::fs::read(image_source)
+            .await
+            .map_err(|e| format!("读取图片文件失败: {}", e))
+    }
+}
+
 // ── Config commands ──────────────────────────────────────────────────
 
 #[tauri::command]
@@ -158,6 +189,49 @@ pub fn save_decode_config(
     config.decode = decode;
     config.save().map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[tauri::command]
+pub async fn copy_image_to_clipboard(
+    state: State<'_, AppState>,
+    image_source: String,
+) -> Result<(), String> {
+    let bytes = load_image_bytes(&image_source).await?;
+    let decoded = image::load_from_memory(&bytes)
+        .map_err(|e| format!("解析图片失败: {}", e))?
+        .to_rgba8();
+    let (width, height) = decoded.dimensions();
+    let image = arboard::ImageData {
+        width: width as usize,
+        height: height as usize,
+        bytes: Cow::Owned(decoded.into_raw()),
+    };
+
+    #[cfg(target_os = "linux")]
+    {
+        let mut clipboard_guard = state.clipboard.lock().map_err(|e| e.to_string())?;
+        if clipboard_guard.is_none() {
+            *clipboard_guard = Some(
+                arboard::Clipboard::new().map_err(|e| format!("打开系统剪贴板失败: {}", e))?,
+            );
+        }
+
+        return clipboard_guard
+            .as_mut()
+            .ok_or_else(|| "剪贴板不可用".to_string())?
+            .set_image(image)
+            .map_err(|e| format!("写入系统剪贴板失败: {}", e));
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = state;
+        let mut clipboard =
+            arboard::Clipboard::new().map_err(|e| format!("打开系统剪贴板失败: {}", e))?;
+        return clipboard
+            .set_image(image)
+            .map_err(|e| format!("写入系统剪贴板失败: {}", e));
+    }
 }
 
 // ── OSS commands ─────────────────────────────────────────────────────

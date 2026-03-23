@@ -19,6 +19,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState {
             config: Mutex::new(app_config),
+            #[cfg(target_os = "linux")]
+            clipboard: Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_config,
@@ -26,6 +28,7 @@ pub fn run() {
             commands::save_watermark_config,
             commands::save_compress_config,
             commands::save_decode_config,
+            commands::copy_image_to_clipboard,
             commands::upload_to_oss,
             commands::list_oss_objects,
             commands::add_watermark,

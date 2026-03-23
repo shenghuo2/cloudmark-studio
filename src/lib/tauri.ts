@@ -112,6 +112,10 @@ export async function saveDecodeConfig(
   return invoke("save_decode_config", { decode });
 }
 
+export async function copyImageToClipboard(imageSource: string): Promise<void> {
+  return invoke("copy_image_to_clipboard", { imageSource });
+}
+
 // ── OSS API ──────────────────────────────────────────────────────────
 
 export async function uploadToOss(

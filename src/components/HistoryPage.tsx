@@ -8,6 +8,7 @@ import {
   Stamp,
   ScanSearch,
 } from "lucide-react";
+import { copyImageToClipboard } from "../lib/tauri";
 
 export interface HistoryRecord {
   id: string;
@@ -142,6 +143,7 @@ function HistoryItem({
 }) {
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [copiedImg, setCopiedImg] = useState(false);
+  const [copyImgFailed, setCopyImgFailed] = useState(false);
 
   async function handleCopyUrl() {
     await navigator.clipboard.writeText(record.url);
@@ -151,29 +153,15 @@ function HistoryItem({
 
   async function handleCopyImage() {
     try {
-      const resp = await fetch(record.url);
-      const blob = await resp.blob();
-      const pngBlob = blob.type === "image/png" ? blob : await toPng(blob);
-      await navigator.clipboard.write([
-        new ClipboardItem({ "image/png": pngBlob }),
-      ]);
+      await copyImageToClipboard(record.url);
       setCopiedImg(true);
+      setCopyImgFailed(false);
       setTimeout(() => setCopiedImg(false), 2000);
-    } catch {
-      handleCopyUrl();
+    } catch (error) {
+      console.error("copy image failed", error);
+      setCopyImgFailed(true);
+      setTimeout(() => setCopyImgFailed(false), 2000);
     }
-  }
-
-  async function toPng(blob: Blob): Promise<Blob> {
-    const img = new Image();
-    const url = URL.createObjectURL(blob);
-    await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = rej; img.src = url; });
-    const c = document.createElement("canvas");
-    c.width = img.naturalWidth;
-    c.height = img.naturalHeight;
-    c.getContext("2d")!.drawImage(img, 0, 0);
-    URL.revokeObjectURL(url);
-    return new Promise((res) => c.toBlob((b) => res(b!), "image/png"));
   }
 
   const time = new Date(record.timestamp);
@@ -230,7 +218,7 @@ function HistoryItem({
       <div className="flex shrink-0 items-center gap-0.5 opacity-70 group-hover:opacity-100 transition-opacity">
         {record.url && (
           <>
-            <IconBtn onClick={handleCopyImage} title={copiedImg ? "已复制" : "复制图片到剪切板"}>
+            <IconBtn onClick={handleCopyImage} title={copyImgFailed ? "复制失败" : copiedImg ? "已复制" : "复制图片到剪切板"}>
               {copiedImg ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
             </IconBtn>
             <IconBtn onClick={handleCopyUrl} title={copiedUrl ? "已复制" : "复制外链"}>
