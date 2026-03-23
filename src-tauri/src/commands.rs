@@ -432,6 +432,75 @@ pub async fn download_url_to_temp(url: String) -> Result<String, String> {
     Ok(dest.to_string_lossy().to_string())
 }
 
+#[tauri::command]
+pub async fn save_pasted_image_to_temp(
+    bytes: Vec<u8>,
+    file_name: Option<String>,
+    mime_type: Option<String>,
+) -> Result<String, String> {
+    if bytes.is_empty() {
+        return Err("剪贴板中没有图片数据".to_string());
+    }
+
+    let ext = file_name
+        .as_deref()
+        .and_then(|name| std::path::Path::new(name).extension().and_then(|ext| ext.to_str()))
+        .map(|ext| ext.to_ascii_lowercase())
+        .filter(|ext| {
+            matches!(
+                ext.as_str(),
+                "png" | "jpg" | "jpeg" | "webp" | "bmp" | "tiff" | "tif" | "gif" | "avif"
+            )
+        })
+        .or_else(|| {
+            mime_type.as_deref().and_then(|mime| match mime {
+                "image/png" => Some("png".to_string()),
+                "image/jpeg" => Some("jpg".to_string()),
+                "image/webp" => Some("webp".to_string()),
+                "image/bmp" => Some("bmp".to_string()),
+                "image/tiff" => Some("tiff".to_string()),
+                "image/gif" => Some("gif".to_string()),
+                "image/avif" => Some("avif".to_string()),
+                _ => None,
+            })
+        })
+        .or_else(|| {
+            image::guess_format(&bytes).ok().map(|format| match format {
+                image::ImageFormat::Png => "png".to_string(),
+                image::ImageFormat::Jpeg => "jpg".to_string(),
+                image::ImageFormat::WebP => "webp".to_string(),
+                image::ImageFormat::Bmp => "bmp".to_string(),
+                image::ImageFormat::Tiff => "tiff".to_string(),
+                image::ImageFormat::Gif => "gif".to_string(),
+                image::ImageFormat::Avif => "avif".to_string(),
+                _ => "png".to_string(),
+            })
+        })
+        .unwrap_or_else(|| "png".to_string());
+
+    let temp_dir = std::env::temp_dir().join("cloudmark-paste");
+    tokio::fs::create_dir_all(&temp_dir)
+        .await
+        .map_err(|e| format!("创建临时目录失败: {}", e))?;
+
+    let file_stem = file_name
+        .as_deref()
+        .and_then(|name| {
+            std::path::Path::new(name)
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+        })
+        .filter(|stem| !stem.is_empty())
+        .unwrap_or("pasted-image");
+
+    let dest = temp_dir.join(format!("{}-{}.{}", file_stem, uuid::Uuid::new_v4(), ext));
+    tokio::fs::write(&dest, bytes)
+        .await
+        .map_err(|e| format!("写入临时文件失败: {}", e))?;
+
+    Ok(dest.to_string_lossy().to_string())
+}
+
 // ── Image compression commands ───────────────────────────────────────
 
 #[tauri::command]

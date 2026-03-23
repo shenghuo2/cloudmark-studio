@@ -34,6 +34,7 @@ pub fn run() {
             commands::decode_watermark,
             commands::get_decode_result,
             commands::download_url_to_temp,
+            commands::save_pasted_image_to_temp,
             commands::get_temp_dir,
             commands::get_image_info,
             commands::compress_image,

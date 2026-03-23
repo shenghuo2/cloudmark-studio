@@ -2,12 +2,25 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Upload, ImagePlus, Link } from "lucide-react";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { open } from "@tauri-apps/plugin-dialog";
+import { savePastedImageToTemp } from "../lib/tauri";
 
 const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "webp", "bmp", "tiff", "avif"];
 
 function isImagePath(path: string): boolean {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
   return IMAGE_EXTENSIONS.includes(ext);
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+
+  const tag = target.tagName.toLowerCase();
+  return (
+    tag === "input" ||
+    tag === "textarea" ||
+    tag === "select" ||
+    target.isContentEditable
+  );
 }
 
 interface Props {
@@ -63,6 +76,50 @@ export default function DropZone({
     return () => {
       unlisten?.();
     };
+  }, [disabled]);
+
+  useEffect(() => {
+    const handlePaste = async (event: ClipboardEvent) => {
+      if (disabled || !activeRef.current || isEditableTarget(event.target)) {
+        return;
+      }
+
+      const imageItems = Array.from(event.clipboardData?.items ?? []).filter(
+        (item) => item.type.startsWith("image/")
+      );
+      if (imageItems.length === 0) return;
+
+      event.preventDefault();
+
+      const paths: string[] = [];
+      for (const item of imageItems) {
+        const file = item.getAsFile();
+        if (!file) continue;
+
+        try {
+          const buffer = await file.arrayBuffer();
+          const path = await savePastedImageToTemp(
+            Array.from(new Uint8Array(buffer)),
+            {
+              fileName: file.name || undefined,
+              mimeType: file.type || undefined,
+            }
+          );
+          if (isImagePath(path)) {
+            paths.push(path);
+          }
+        } catch (e) {
+          console.error("Paste image error:", e);
+        }
+      }
+
+      if (paths.length > 0) {
+        callbackRef.current(paths);
+      }
+    };
+
+    window.addEventListener("paste", handlePaste);
+    return () => window.removeEventListener("paste", handlePaste);
   }, [disabled]);
 
   const handleBrowse = useCallback(async () => {
@@ -132,7 +189,7 @@ export default function DropZone({
           {dragging ? "释放以添加图片" : "拖拽图片到此处，或点击选择文件"}
         </p>
         <p className="mt-1 text-xs text-zinc-500">
-          支持 PNG, JPG, WebP, BMP, TIFF, AVIF
+          支持 PNG, JPG, WebP, BMP, TIFF, AVIF · 可直接 Cmd/Ctrl+V
         </p>
       </div>
 

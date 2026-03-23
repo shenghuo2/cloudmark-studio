@@ -170,6 +170,20 @@ export async function downloadUrlToTemp(url: string): Promise<string> {
   return invoke("download_url_to_temp", { url });
 }
 
+export async function savePastedImageToTemp(
+  bytes: number[],
+  opts?: {
+    fileName?: string;
+    mimeType?: string;
+  }
+): Promise<string> {
+  return invoke("save_pasted_image_to_temp", {
+    bytes,
+    fileName: opts?.fileName ?? null,
+    mimeType: opts?.mimeType ?? null,
+  });
+}
+
 // ── Temp Dir API ───────────────────────────────────────────────────
 
 export async function getTempDir(): Promise<string> {
