@@ -13,6 +13,7 @@ import {
   Search,
   Stamp,
   Trash2,
+  X,
 } from "lucide-react";
 import {
   deleteFromOss,
@@ -29,6 +30,18 @@ interface Props {
   onSendToDecode: (items: OssObjectRef[]) => void;
   active?: boolean;
 }
+
+const IMAGE_EXTENSIONS = new Set([
+  "png",
+  "jpg",
+  "jpeg",
+  "webp",
+  "bmp",
+  "tiff",
+  "avif",
+  "gif",
+  "svg",
+]);
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -55,6 +68,15 @@ function parentPrefix(prefix: string): string {
   return parts.length > 0 ? `${parts.join("/")}/` : "";
 }
 
+function isPreviewableImage(name: string): boolean {
+  const ext = name.split(".").pop()?.toLowerCase() ?? "";
+  return IMAGE_EXTENSIONS.has(ext);
+}
+
+function clampScale(value: number): number {
+  return Math.min(5, Math.max(0.25, Number(value.toFixed(2))));
+}
+
 function mergePage(prev: ListOssObjectsResult, next: ListOssObjectsResult): ListOssObjectsResult {
   const prefixMap = new Map(prev.prefixes.map((item) => [item.prefix, item]));
   for (const item of next.prefixes) {
@@ -75,6 +97,10 @@ function mergePage(prev: ListOssObjectsResult, next: ListOssObjectsResult): List
 
 function RemoteThumb({ url }: { url: string }) {
   const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [url]);
 
   if (!url || failed) {
     return (
@@ -106,6 +132,8 @@ export default function OssBrowserPage({
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [previewItem, setPreviewItem] = useState<OssObjectEntry | null>(null);
+  const [previewScale, setPreviewScale] = useState(1);
   const loadedRef = useRef(false);
 
   const currentPrefix = data?.prefix ?? "";
@@ -147,6 +175,26 @@ export default function OssBrowserPage({
     }
   }, [active, loadPrefix, ossConfigured]);
 
+  useEffect(() => {
+    if (!previewItem) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setPreviewItem(null);
+        setPreviewScale(1);
+      }
+    };
+
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [previewItem]);
+
   const breadcrumbs = useMemo(() => {
     const trimmed = currentPrefix.replace(/\/$/, "");
     if (!trimmed) return [] as { label: string; prefix: string }[];
@@ -184,6 +232,16 @@ export default function OssBrowserPage({
 
   const handleCopyUrl = useCallback(async (item: OssObjectEntry) => {
     await navigator.clipboard.writeText(item.url);
+  }, []);
+
+  const handleOpenPreview = useCallback((item: OssObjectEntry) => {
+    setPreviewItem(item);
+    setPreviewScale(1);
+  }, []);
+
+  const handleClosePreview = useCallback(() => {
+    setPreviewItem(null);
+    setPreviewScale(1);
   }, []);
 
   const handleRename = useCallback(
@@ -234,12 +292,16 @@ export default function OssBrowserPage({
             }
           : prev
       );
+      if (previewItem?.key === item.key) {
+        setPreviewItem(null);
+        setPreviewScale(1);
+      }
     } catch (e) {
       window.alert(`删除失败: ${e}`);
     } finally {
       setBusyKey(null);
     }
-  }, []);
+  }, [previewItem?.key]);
 
   const toRef = useCallback(
     (item: OssObjectEntry): OssObjectRef => ({
@@ -354,12 +416,24 @@ export default function OssBrowserPage({
 
             {visibleObjects.map((item) => {
               const busy = busyKey === item.key;
+              const previewable = isPreviewableImage(item.name);
               return (
                 <div
                   key={item.key}
                   className="group flex items-center gap-3 rounded-lg border border-zinc-200 px-3 py-2.5 transition hover:shadow-sm dark:border-zinc-700/60"
                 >
-                  <RemoteThumb url={item.url} />
+                  {previewable ? (
+                    <button
+                      type="button"
+                      onDoubleClick={() => handleOpenPreview(item)}
+                      title="双击预览"
+                      className="block shrink-0 cursor-zoom-in rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                    >
+                      <RemoteThumb url={item.url} />
+                    </button>
+                  ) : (
+                    <RemoteThumb url={item.url} />
+                  )}
 
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-zinc-800 dark:text-zinc-200">
@@ -439,6 +513,58 @@ export default function OssBrowserPage({
           </div>
         )}
       </div>
+
+      {previewItem && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
+          onClick={handleClosePreview}
+        >
+          <div
+            className="relative flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-zinc-950 text-white shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-4 border-b border-white/10 px-4 py-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">{previewItem.name}</p>
+                <p className="mt-0.5 text-xs text-zinc-400">
+                  滚轮缩放 · Esc 关闭 · {Math.round(previewScale * 100)}%
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleClosePreview}
+                className="rounded-lg p-2 text-zinc-400 transition hover:bg-white/10 hover:text-white"
+                title="关闭预览"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div
+              className="min-h-0 flex-1 overflow-auto bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.08),_transparent_55%)]"
+              onWheel={(event) => {
+                event.preventDefault();
+                setPreviewScale((prev) =>
+                  clampScale(prev + (event.deltaY < 0 ? 0.2 : -0.2))
+                );
+              }}
+            >
+              <div className="flex min-h-full min-w-full items-center justify-center p-6">
+                <img
+                  src={previewItem.url}
+                  alt={previewItem.name}
+                  style={{
+                    transform: `scale(${previewScale})`,
+                    transformOrigin: "center center",
+                    transition: "transform 120ms ease-out",
+                  }}
+                  className="max-h-[78vh] max-w-full select-none rounded-xl object-contain shadow-2xl"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
