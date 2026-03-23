@@ -1,4 +1,6 @@
-use std::path::PathBuf;
+use chrono::Local;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use tauri::State;
 
@@ -12,6 +14,9 @@ pub struct AppState {
     pub config: Mutex<AppConfig>,
 }
 
+const DEFAULT_RENAME_TEMPLATE: &str = "{date}-{name}-watermarked-{n}";
+static OUTPUT_SEQUENCE: AtomicU64 = AtomicU64::new(1);
+
 fn short_hex_id() -> String {
     uuid::Uuid::new_v4()
         .simple()
@@ -19,6 +24,91 @@ fn short_hex_id() -> String {
         .chars()
         .take(8)
         .collect()
+}
+
+fn sanitize_filename_component(value: &str) -> String {
+    let sanitized: String = value
+        .chars()
+        .map(|ch| match ch {
+            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => '-',
+            c if c.is_control() => '-',
+            _ => ch,
+        })
+        .collect();
+    let sanitized = sanitized.trim();
+    if sanitized.is_empty() || sanitized.chars().all(|ch| ch == '.') {
+        "image".to_string()
+    } else {
+        sanitized.to_string()
+    }
+}
+
+fn normalized_source_file_name(source_name: &str) -> String {
+    let fallback_name = "image";
+    let file_name = Path::new(source_name)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or(fallback_name);
+    let file_path = Path::new(file_name);
+    let source_stem = file_path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .filter(|stem| !stem.trim().is_empty())
+        .unwrap_or(fallback_name);
+    let source_ext = file_path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .filter(|ext| !ext.trim().is_empty())
+        .map(|ext| format!(".{}", ext))
+        .unwrap_or_default();
+
+    format!("{}{}", sanitize_filename_component(source_stem), source_ext)
+}
+
+fn output_file_name_from_template(template: &str, source_name: &str) -> String {
+    let fallback_name = "image";
+    let file_name = Path::new(source_name)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or(fallback_name);
+    let file_path = Path::new(file_name);
+    let source_stem = file_path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .filter(|stem| !stem.trim().is_empty())
+        .unwrap_or(fallback_name);
+    let source_ext = file_path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .filter(|ext| !ext.trim().is_empty())
+        .map(|ext| format!(".{}", ext))
+        .unwrap_or_default();
+
+    let now = Local::now();
+    let sequence = OUTPUT_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let short_id = short_hex_id();
+    let template = if template.trim().is_empty() {
+        DEFAULT_RENAME_TEMPLATE
+    } else {
+        template.trim()
+    };
+
+    let rendered = template
+        .replace("{date}", &now.format("%Y%m%d").to_string())
+        .replace("{time}", &now.format("%H%M%S").to_string())
+        .replace("{datetime}", &now.format("%Y%m%d-%H%M%S").to_string())
+        .replace("{name}", &sanitize_filename_component(source_stem))
+        .replace("{n}", &sequence.to_string())
+        .replace("{id}", &short_id);
+    let rendered = sanitize_filename_component(&rendered);
+
+    if !source_ext.is_empty() && rendered.to_lowercase().ends_with(&source_ext.to_lowercase()) {
+        rendered
+    } else {
+        format!("{}{}", rendered, source_ext)
+    }
 }
 
 // ── Config commands ──────────────────────────────────────────────────
@@ -181,6 +271,7 @@ pub async fn add_watermark(
     watermark_text: Option<String>,
     strength: Option<String>,
     quality: Option<u8>,
+    source_name: Option<String>,
     keep_original: Option<bool>,
 ) -> Result<WatermarkResult, String> {
     let (oss_config, wm_config) = {
@@ -226,9 +317,23 @@ pub async fn add_watermark(
         return Err("Either file_path or object_key must be provided".to_string());
     };
 
-    // Derive output filename from source_key
-    let source_filename = source_key.split('/').last().unwrap_or(&source_key);
-    let output_key = format!("{}watermarked/{}-{}", prefix, short_id, source_filename);
+    let source_name = source_name
+        .filter(|name| !name.trim().is_empty())
+        .or_else(|| {
+            file_path.as_ref().and_then(|path| {
+                Path::new(path)
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .map(|name| name.to_string())
+            })
+        })
+        .unwrap_or_else(|| source_key.split('/').last().unwrap_or(&source_key).to_string());
+    let output_filename = if wm_config.rename_template_enabled {
+        output_file_name_from_template(&wm_config.rename_template, &source_name)
+    } else {
+        format!("{}-{}", short_id, normalized_source_file_name(&source_name))
+    };
+    let output_key = format!("{}watermarked/{}", prefix, output_filename);
 
     // Add blind watermark
     let result = client

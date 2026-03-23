@@ -16,6 +16,8 @@ export interface WatermarkConfig {
   content: string;
   strength: string;
   quality: number | null;
+  rename_template_enabled: boolean;
+  rename_template: string;
 }
 
 export interface CompressConfig {
@@ -170,6 +172,7 @@ export async function addWatermark(
     watermarkText?: string;
     strength?: string;
     quality?: number;
+    sourceName?: string;
     keepOriginal?: boolean;
   }
 ): Promise<WatermarkResult> {
@@ -179,6 +182,7 @@ export async function addWatermark(
     watermarkText: opts.watermarkText ?? null,
     strength: opts.strength ?? null,
     quality: opts.quality ?? null,
+    sourceName: opts.sourceName ?? null,
     keepOriginal: opts.keepOriginal ?? null,
   });
 }

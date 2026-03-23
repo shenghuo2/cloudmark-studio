@@ -24,6 +24,8 @@ interface Props {
   onSetTheme: (m: ThemeMode) => void;
 }
 
+const DEFAULT_RENAME_TEMPLATE = "{date}-{name}-watermarked-{n}";
+
 export default function SettingsPanel({ ossConfig, onSaveOss, watermarkConfig, onSaveWatermark, compressConfig, onSaveCompress, decodeConfig, onSaveDecode, themeMode, onSetTheme }: Props) {
   const [oss, setOss] = useState<OssConfig>({
     access_key_id: "",
@@ -39,13 +41,21 @@ export default function SettingsPanel({ ossConfig, onSaveOss, watermarkConfig, o
     content: "",
     strength: "low",
     quality: 90,
+    rename_template_enabled: false,
+    rename_template: DEFAULT_RENAME_TEMPLATE,
   });
 
   const [comp, setComp] = useState<CompressConfig>({ auto_save: false });
   const [dec, setDec] = useState<DecodeConfig>({ auto_delete: true });
 
   useEffect(() => {
-    if (watermarkConfig) setWm(watermarkConfig);
+    if (watermarkConfig) {
+      setWm({
+        ...watermarkConfig,
+        rename_template_enabled: watermarkConfig.rename_template_enabled ?? false,
+        rename_template: watermarkConfig.rename_template || DEFAULT_RENAME_TEMPLATE,
+      });
+    }
   }, [watermarkConfig]);
 
   useEffect(() => {
@@ -90,7 +100,6 @@ export default function SettingsPanel({ ossConfig, onSaveOss, watermarkConfig, o
 
   return (
     <div className="flex h-full flex-col gap-4">
-      {/* Toast */}
       {message && (
         <div
           className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium ${
@@ -104,9 +113,8 @@ export default function SettingsPanel({ ossConfig, onSaveOss, watermarkConfig, o
         </div>
       )}
 
-      {/* OSS Config */}
       <Fieldset className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-700/60 dark:bg-zinc-900">
-        <Legend className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 px-1">
+        <Legend className="px-1 text-sm font-semibold text-zinc-900 dark:text-zinc-100">
           阿里云 OSS 连接
         </Legend>
 
@@ -145,7 +153,7 @@ export default function SettingsPanel({ ossConfig, onSaveOss, watermarkConfig, o
               <button
                 type="button"
                 onClick={() => setShowSecret(!showSecret)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 mt-0.5 p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                className="absolute right-2 top-1/2 mt-0.5 -translate-y-1/2 p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
               >
                 {showSecret ? (
                   <EyeOff className="h-4 w-4" />
@@ -237,16 +245,16 @@ export default function SettingsPanel({ ossConfig, onSaveOss, watermarkConfig, o
           <button
             onClick={handleSaveOss}
             disabled={saving || !oss.access_key_id || !oss.access_key_secret || !oss.endpoint || !oss.bucket || !oss.region}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Save className="h-4 w-4" />
             {saving ? "保存中..." : "保存配置"}
           </button>
         </div>
       </Fieldset>
-      {/* Watermark Config */}
+
       <Fieldset className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-700/60 dark:bg-zinc-900">
-        <Legend className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 px-1">
+        <Legend className="px-1 text-sm font-semibold text-zinc-900 dark:text-zinc-100">
           默认水印设置
         </Legend>
 
@@ -297,6 +305,39 @@ export default function SettingsPanel({ ossConfig, onSaveOss, watermarkConfig, o
               70-100，仅影响 JPEG 输出
             </Description>
           </Field>
+
+          <Field className="col-span-2">
+            <label className="flex cursor-pointer items-center gap-3">
+              <input
+                type="checkbox"
+                checked={wm.rename_template_enabled}
+                onChange={(e) =>
+                  setWm((p) => ({ ...p, rename_template_enabled: e.target.checked }))
+                }
+                className="h-4 w-4 rounded border-zinc-300 text-primary-600 focus:ring-primary-500 dark:border-zinc-600 dark:bg-zinc-800"
+              />
+              <div>
+                <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">启用自动重命名模板</span>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">默认关闭。关闭时沿用默认命名：8位 hex + 原文件名</p>
+              </div>
+            </label>
+
+            <Label className="mt-4 block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+              文件名模板
+            </Label>
+            <Input
+              className={[inputClass, !wm.rename_template_enabled ? "cursor-not-allowed opacity-60" : ""]
+                .filter(Boolean)
+                .join(" ")}
+              value={wm.rename_template}
+              onChange={(e) => setWm((p) => ({ ...p, rename_template: e.target.value }))}
+              placeholder={DEFAULT_RENAME_TEMPLATE}
+              disabled={!wm.rename_template_enabled}
+            />
+            <Description className="mt-1 text-xs text-zinc-500">
+              支持变量：{`{date}`}, {`{time}`}, {`{datetime}`}, {`{name}`}, {`{n}`}, {`{id}`}. 扩展名会自动保留，示例：{`{date}-{name}-watermarked-{n}`}
+            </Description>
+          </Field>
         </div>
 
         <div className="mt-5 flex justify-end">
@@ -305,7 +346,10 @@ export default function SettingsPanel({ ossConfig, onSaveOss, watermarkConfig, o
               setSaving(true);
               setMessage(null);
               try {
-                await onSaveWatermark(wm);
+                await onSaveWatermark({
+                  ...wm,
+                  rename_template: wm.rename_template.trim() || DEFAULT_RENAME_TEMPLATE,
+                });
                 setMessage({ type: "success", text: "水印设置已保存" });
                 setTimeout(() => setMessage(null), 3000);
               } catch (e) {
@@ -315,7 +359,7 @@ export default function SettingsPanel({ ossConfig, onSaveOss, watermarkConfig, o
               }
             }}
             disabled={saving}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Save className="h-4 w-4" />
             {saving ? "保存中..." : "保存水印设置"}
@@ -323,14 +367,13 @@ export default function SettingsPanel({ ossConfig, onSaveOss, watermarkConfig, o
         </div>
       </Fieldset>
 
-      {/* Compress Config */}
       <Fieldset className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-700/60 dark:bg-zinc-900">
-        <Legend className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 px-1">
+        <Legend className="px-1 text-sm font-semibold text-zinc-900 dark:text-zinc-100">
           图片压缩设置
         </Legend>
 
         <div className="mt-4 space-y-3">
-          <label className="flex items-center gap-3 cursor-pointer">
+          <label className="flex cursor-pointer items-center gap-3">
             <input
               type="checkbox"
               checked={comp.auto_save}
@@ -360,7 +403,7 @@ export default function SettingsPanel({ ossConfig, onSaveOss, watermarkConfig, o
               }
             }}
             disabled={saving}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Save className="h-4 w-4" />
             {saving ? "保存中..." : "保存压缩设置"}
@@ -368,9 +411,8 @@ export default function SettingsPanel({ ossConfig, onSaveOss, watermarkConfig, o
         </div>
       </Fieldset>
 
-      {/* Appearance */}
       <Fieldset className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-700/60 dark:bg-zinc-900">
-        <Legend className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 px-1">
+        <Legend className="px-1 text-sm font-semibold text-zinc-900 dark:text-zinc-100">
           外观
         </Legend>
 
@@ -399,14 +441,13 @@ export default function SettingsPanel({ ossConfig, onSaveOss, watermarkConfig, o
         </div>
       </Fieldset>
 
-      {/* Decode Config */}
       <Fieldset className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-700/60 dark:bg-zinc-900">
-        <Legend className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 px-1">
+        <Legend className="px-1 text-sm font-semibold text-zinc-900 dark:text-zinc-100">
           水印解析设置
         </Legend>
 
         <div className="mt-4 space-y-3">
-          <label className="flex items-center gap-3 cursor-pointer">
+          <label className="flex cursor-pointer items-center gap-3">
             <input
               type="checkbox"
               checked={dec.auto_delete}
@@ -436,7 +477,7 @@ export default function SettingsPanel({ ossConfig, onSaveOss, watermarkConfig, o
               }
             }}
             disabled={saving}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Save className="h-4 w-4" />
             {saving ? "保存中..." : "保存解析设置"}

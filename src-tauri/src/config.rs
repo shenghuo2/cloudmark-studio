@@ -14,6 +14,10 @@ pub struct OssConfig {
     pub custom_domain: Option<String>,
 }
 
+fn default_rename_template() -> String {
+    "{date}-{name}-watermarked-{n}".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WatermarkConfig {
     pub content: String,
@@ -21,6 +25,12 @@ pub struct WatermarkConfig {
     pub strength: String,
     /// 70-100, only for JPEG output
     pub quality: Option<u8>,
+    /// Whether to apply rename template to watermarked output
+    #[serde(default)]
+    pub rename_template_enabled: bool,
+    /// File name template for watermarked output, e.g. {date}-{name}-watermarked-{n}
+    #[serde(default = "default_rename_template")]
+    pub rename_template: String,
 }
 
 impl Default for WatermarkConfig {
@@ -29,6 +39,8 @@ impl Default for WatermarkConfig {
             content: String::new(),
             strength: "low".to_string(),
             quality: Some(90),
+            rename_template_enabled: false,
+            rename_template: default_rename_template(),
         }
     }
 }

@@ -180,6 +180,7 @@ export default function WatermarkPage({
       try {
         const result = await addWatermark({
           objectKey: img.objectKey,
+          sourceName: img.name,
           watermarkText: watermarkText.trim(),
           strength,
         });

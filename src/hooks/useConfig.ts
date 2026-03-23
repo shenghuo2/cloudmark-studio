@@ -24,7 +24,7 @@ export function useConfig() {
       console.warn("Failed to load config (browser mode?):", e);
       setConfig({
         oss: null,
-        watermark: { content: "", strength: "low", quality: 90 },
+        watermark: { content: "", strength: "low", quality: 90, rename_template_enabled: false, rename_template: "{date}-{name}-watermarked-{n}" },
         compress: { auto_save: false },
         decode: { auto_delete: true },
       });
@@ -42,7 +42,7 @@ export function useConfig() {
     async (oss: OssConfig) => {
       await saveOssConfig(oss);
       setConfig((prev) =>
-        prev ? { ...prev, oss } : { oss, watermark: { content: "", strength: "low", quality: 90 }, compress: { auto_save: false }, decode: { auto_delete: true } }
+        prev ? { ...prev, oss } : { oss, watermark: { content: "", strength: "low", quality: 90, rename_template_enabled: false, rename_template: "{date}-{name}-watermarked-{n}" }, compress: { auto_save: false }, decode: { auto_delete: true } }
       );
     },
     []
@@ -62,7 +62,7 @@ export function useConfig() {
     async (compress: CompressConfig) => {
       await saveCompressConfig(compress);
       setConfig((prev) =>
-        prev ? { ...prev, compress } : { oss: null, watermark: { content: "", strength: "low", quality: 90 }, compress, decode: { auto_delete: true } }
+        prev ? { ...prev, compress } : { oss: null, watermark: { content: "", strength: "low", quality: 90, rename_template_enabled: false, rename_template: "{date}-{name}-watermarked-{n}" }, compress, decode: { auto_delete: true } }
       );
     },
     []
@@ -72,7 +72,7 @@ export function useConfig() {
     async (decode: DecodeConfig) => {
       await saveDecodeConfig(decode);
       setConfig((prev) =>
-        prev ? { ...prev, decode } : { oss: null, watermark: { content: "", strength: "low", quality: 90 }, compress: { auto_save: false }, decode }
+        prev ? { ...prev, decode } : { oss: null, watermark: { content: "", strength: "low", quality: 90, rename_template_enabled: false, rename_template: "{date}-{name}-watermarked-{n}" }, compress: { auto_save: false }, decode }
       );
     },
     []
