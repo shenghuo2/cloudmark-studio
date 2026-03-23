@@ -21,6 +21,7 @@ interface DecodeItem {
   result?: string;
   objectKey?: string;
   progress?: number;
+  previewUrl?: string;
   preserveSource?: boolean;
 }
 
@@ -33,9 +34,25 @@ interface Props {
   externalOssObjects?: OssObjectRef[];
 }
 
-function DecodeThumbnail({ path, busy }: { path: string; busy: boolean }) {
+function DecodeThumbnail({
+  path,
+  previewUrl,
+  busy,
+}: {
+  path: string;
+  previewUrl?: string;
+  busy: boolean;
+}) {
   const [failed, setFailed] = useState(false);
-  const src = path.startsWith("http") ? path : convertFileSrc(path);
+  const src = previewUrl
+    ? previewUrl
+    : path.startsWith("http")
+      ? path
+      : convertFileSrc(path);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [src]);
 
   if (busy && !path) {
     return (
@@ -89,6 +106,7 @@ export default function DecodePage({
         updateItem(id, {
           status: "pending",
           objectKey: upload.object_key,
+          previewUrl: upload.url,
           preserveSource: false,
         });
       } catch (e) {
@@ -112,6 +130,7 @@ export default function DecodePage({
         path: item.url,
         status: "pending" as const,
         objectKey: item.objectKey,
+        previewUrl: item.url,
         preserveSource: true,
       }));
       setItems((prev) => [...prev, ...newItems]);
@@ -151,6 +170,7 @@ export default function DecodePage({
             status: "pending",
             path: tempPath,
             objectKey: upload.object_key,
+            previewUrl: upload.url,
             preserveSource: false,
           });
         } catch (e) {
@@ -283,7 +303,7 @@ export default function DecodePage({
                 key={item.id}
                 className="group flex items-center gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2.5 transition hover:shadow-sm dark:border-zinc-700/60 dark:bg-zinc-900"
               >
-                <DecodeThumbnail path={item.path} busy={busy} />
+                <DecodeThumbnail path={item.path} previewUrl={item.previewUrl} busy={busy} />
 
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-zinc-800 dark:text-zinc-200">

@@ -1,4 +1,4 @@
-import { useState as useLocalState } from "react";
+import { useEffect, useState as useLocalState } from "react";
 import {
   Loader2,
   CheckCircle2,
@@ -31,6 +31,7 @@ export interface ImageItem {
   objectKey?: string;
   watermarkedKey?: string;
   watermarkedUrl?: string;
+  previewUrl?: string;
   decodedText?: string;
   preserveSource?: boolean;
 }
@@ -100,7 +101,7 @@ function IconBtn({
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className={`rounded-lg p-1.5 transition disabled:opacity-30 disabled:cursor-not-allowed ${className ?? "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-zinc-300"}`}
+      className={`rounded-lg p-1.5 transition disabled:cursor-not-allowed disabled:opacity-30 ${className ?? "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-zinc-300"}`}
     >
       {children}
     </button>
@@ -109,6 +110,10 @@ function IconBtn({
 
 function Thumbnail({ src, busy }: { src?: string; busy: boolean }) {
   const [failed, setFailed] = useLocalState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [src]);
 
   if (busy && !src) {
     return (
@@ -131,9 +136,16 @@ function Thumbnail({ src, busy }: { src?: string; busy: boolean }) {
       src={src}
       alt=""
       onError={() => setFailed(true)}
-      className="h-10 w-10 shrink-0 rounded-lg object-cover bg-zinc-100 dark:bg-zinc-800"
+      className="h-10 w-10 shrink-0 rounded-lg bg-zinc-100 object-cover dark:bg-zinc-800"
     />
   );
+}
+
+function resolvePreviewSrc(image: ImageItem): string | undefined {
+  if (image.watermarkedUrl) return image.watermarkedUrl;
+  if (image.previewUrl) return image.previewUrl;
+  if (!image.path) return undefined;
+  return image.path.startsWith("http") ? image.path : convertFileSrc(image.path);
 }
 
 export default function ImageCard({
@@ -178,7 +190,6 @@ export default function ImageCard({
       setCopiedImg(true);
       setTimeout(() => setCopiedImg(false), 2000);
     } catch {
-      // fallback: copy URL instead
       handleCopyUrl();
     }
   }
@@ -186,7 +197,11 @@ export default function ImageCard({
   async function toPng(blob: Blob): Promise<Blob> {
     const img = new Image();
     const url = URL.createObjectURL(blob);
-    await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = rej; img.src = url; });
+    await new Promise<void>((res, rej) => {
+      img.onload = () => res();
+      img.onerror = rej;
+      img.src = url;
+    });
     const c = document.createElement("canvas");
     c.width = img.naturalWidth;
     c.height = img.naturalHeight;
@@ -197,13 +212,8 @@ export default function ImageCard({
 
   return (
     <div className="group flex items-center gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2.5 transition hover:shadow-sm dark:border-zinc-700/60 dark:bg-zinc-900">
-      {/* Thumbnail */}
-      <Thumbnail
-        src={image.watermarkedUrl || (image.path && !image.path.startsWith("http") ? convertFileSrc(image.path) : image.path)}
-        busy={busy}
-      />
+      <Thumbnail src={resolvePreviewSrc(image)} busy={busy} />
 
-      {/* Info */}
       <div className="min-w-0 flex-1">
         {editing ? (
           <input
@@ -221,14 +231,22 @@ export default function ImageCard({
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-              if (e.key === "Escape") { setEditName(image.name); setEditing(false); }
+              if (e.key === "Escape") {
+                setEditName(image.name);
+                setEditing(false);
+              }
             }}
             autoFocus
           />
         ) : (
           <p
-            className="truncate text-sm font-medium text-zinc-800 dark:text-zinc-200 cursor-default"
-            onDoubleClick={() => { if (onRename) { setEditName(image.name); setEditing(true); } }}
+            className="cursor-default truncate text-sm font-medium text-zinc-800 dark:text-zinc-200"
+            onDoubleClick={() => {
+              if (onRename) {
+                setEditName(image.name);
+                setEditing(true);
+              }
+            }}
             title="双击重命名"
           >
             {image.name}
@@ -242,7 +260,7 @@ export default function ImageCard({
             {st.label}
           </span>
           {image.error && (
-            <span className="truncate text-[11px] text-red-500 max-w-[200px]">
+            <span className="max-w-[200px] truncate text-[11px] text-red-500">
               {image.error}
             </span>
           )}
@@ -259,13 +277,12 @@ export default function ImageCard({
         </div>
       </div>
 
-      {/* Actions */}
-      <div className="flex shrink-0 items-center gap-0.5 opacity-70 group-hover:opacity-100 transition-opacity">
+      <div className="flex shrink-0 items-center gap-0.5 opacity-70 transition-opacity group-hover:opacity-100">
         {image.status === "pending" || image.status === "error" ? (
           <button
             onClick={() => onProcess(image.id)}
             disabled={busy}
-            className="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-primary-700 disabled:opacity-40 transition"
+            className="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-2.5 py-1 text-[11px] font-medium text-white transition hover:bg-primary-700 disabled:opacity-40"
           >
             {processIcon ?? <Stamp className="h-3.5 w-3.5" />}
             {processLabel}

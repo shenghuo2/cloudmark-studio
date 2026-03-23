@@ -63,6 +63,7 @@ export default function WatermarkPage({
           status: "pending",
           objectKey: result.object_key,
           watermarkedUrl: undefined,
+          previewUrl: result.url,
           preserveSource: false,
         });
       } catch (e) {
@@ -108,6 +109,7 @@ export default function WatermarkPage({
         path: item.url,
         status: "pending" as const,
         objectKey: item.objectKey,
+        previewUrl: item.url,
         preserveSource: true,
       }));
       setImages((prev) => [...prev, ...newImages]);
@@ -148,6 +150,7 @@ export default function WatermarkPage({
             status: "pending",
             path: tempPath,
             objectKey: result.object_key,
+            previewUrl: result.url,
             preserveSource: false,
           });
         } catch (e) {
