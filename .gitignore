@@ -40,3 +40,4 @@ src-tauri/tests/*.jpeg
 src-tauri/tests/*.webp
 src-tauri/tests/*.avif
 *_compressed.*
+src-tauri/tests/1.txt
