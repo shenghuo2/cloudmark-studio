@@ -1,6 +1,6 @@
 use chrono::Local;
 use std::borrow::Cow;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use tauri::State;
@@ -140,6 +140,40 @@ async fn load_image_bytes(image_source: &str) -> Result<Vec<u8>, String> {
             .await
             .map_err(|e| format!("读取图片文件失败: {}", e))
     }
+}
+
+fn sanitize_download_file_name(value: &str) -> String {
+    let fallback = "downloaded-image";
+    let candidate = Path::new(value)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(sanitize_filename_component)
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| fallback.to_string());
+
+    if candidate == "." || candidate == ".." {
+        fallback.to_string()
+    } else {
+        candidate
+    }
+}
+
+fn resolve_download_target(save_path: &str) -> Result<PathBuf, String> {
+    let download_dir = dirs::download_dir()
+        .or_else(dirs::home_dir)
+        .ok_or_else(|| "无法确定下载目录".to_string())?;
+    let requested = Path::new(save_path);
+
+    if requested
+        .components()
+        .any(|component| matches!(component, Component::ParentDir))
+    {
+        return Err("保存路径不能包含上级目录".to_string());
+    }
+
+    let file_name = sanitize_download_file_name(save_path);
+    let target = download_dir.join(file_name);
+    Ok(target)
 }
 
 // ── Config commands ──────────────────────────────────────────────────
@@ -449,11 +483,18 @@ pub async fn download_from_oss(
         .await
         .map_err(|e| format!("Download failed: {}", e))?;
 
-    tokio::fs::write(&save_path, &data)
+    let target = resolve_download_target(&save_path)?;
+    if let Some(parent) = target.parent() {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|e| format!("Failed to prepare download directory: {}", e))?;
+    }
+
+    tokio::fs::write(&target, &data)
         .await
         .map_err(|e| format!("Failed to save file: {}", e))?;
 
-    Ok(save_path)
+    Ok(target.to_string_lossy().to_string())
 }
 
 /// Delete an object from OSS.
