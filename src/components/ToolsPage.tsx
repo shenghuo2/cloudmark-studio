@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import DropZone from "./DropZone";
-import { getImageInfo, compressImage, getTempDir, downloadUrlToTemp } from "../lib/tauri";
+import { copyImageToClipboard, getImageInfo, compressImage, getTempDir, downloadUrlToTemp } from "../lib/tauri";
 import type { ImageInfo, CompressResult } from "../lib/tauri";
 
 type OutputFormat = "original" | "jpeg" | "png" | "webp";
@@ -45,18 +45,6 @@ function ratio(original: number, compressed: number): string {
   const delta = ((compressed - original) / original) * 100;
   if (Math.abs(delta) < 0.05) return "0.0%";
   return `${delta > 0 ? "+" : "-"}${Math.abs(delta).toFixed(1)}%`;
-}
-
-async function toPng(blob: Blob): Promise<Blob> {
-  const img = new Image();
-  const url = URL.createObjectURL(blob);
-  await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = rej; img.src = url; });
-  const c = document.createElement("canvas");
-  c.width = img.naturalWidth;
-  c.height = img.naturalHeight;
-  c.getContext("2d")!.drawImage(img, 0, 0);
-  URL.revokeObjectURL(url);
-  return new Promise((res) => c.toBlob((b) => res(b!), "image/png"));
 }
 
 const FORMAT_OPTIONS: { value: OutputFormat; label: string }[] = [
@@ -230,20 +218,19 @@ export default function ToolsPage({ autoSave = false, onSendToWatermark, active 
   }, []);
 
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [copyFailedId, setCopyFailedId] = useState<string | null>(null);
 
   const handleCopyToClipboard = useCallback(async (item: CompressItem) => {
     if (!item.result) return;
     try {
-      const resp = await fetch(convertFileSrc(item.result.output_path));
-      const blob = await resp.blob();
-      const pngBlob = blob.type === "image/png" ? blob : await toPng(blob);
-      await navigator.clipboard.write([
-        new ClipboardItem({ "image/png": pngBlob }),
-      ]);
+      await copyImageToClipboard(item.result.output_path);
       setCopiedId(item.id);
+      setCopyFailedId(null);
       setTimeout(() => setCopiedId(null), 2000);
-    } catch {
-      // fallback: do nothing
+    } catch (error) {
+      console.error("copy compressed image failed", error);
+      setCopyFailedId(item.id);
+      setTimeout(() => setCopyFailedId(null), 2000);
     }
   }, []);
 
@@ -466,7 +453,7 @@ export default function ToolsPage({ autoSave = false, onSendToWatermark, active 
                     <>
                       <button
                         onClick={() => handleCopyToClipboard(item)}
-                        title={copiedId === item.id ? "已复制" : "复制到剪切板"}
+                        title={copyFailedId === item.id ? "复制失败" : copiedId === item.id ? "已复制" : "复制到剪切板"}
                         className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 transition dark:hover:bg-zinc-700"
                       >
                         {copiedId === item.id ? (

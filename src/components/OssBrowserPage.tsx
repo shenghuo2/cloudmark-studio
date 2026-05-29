@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUp,
+  Check,
   ChevronRight,
   Copy,
   Folder,
@@ -132,6 +133,8 @@ export default function OssBrowserPage({
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [copyFailedKey, setCopyFailedKey] = useState<string | null>(null);
   const [previewItem, setPreviewItem] = useState<OssObjectEntry | null>(null);
   const [previewScale, setPreviewScale] = useState(1);
   const loadedRef = useRef(false);
@@ -231,7 +234,16 @@ export default function OssBrowserPage({
   }, [currentPrefix, loadPrefix]);
 
   const handleCopyUrl = useCallback(async (item: OssObjectEntry) => {
-    await navigator.clipboard.writeText(item.url);
+    try {
+      await navigator.clipboard.writeText(item.url);
+      setCopiedKey(item.key);
+      setCopyFailedKey(null);
+      setTimeout(() => setCopiedKey(null), 2000);
+    } catch (e) {
+      console.error("copy url failed", e);
+      setCopyFailedKey(item.key);
+      setTimeout(() => setCopyFailedKey(null), 2000);
+    }
   }, []);
 
   const handleOpenPreview = useCallback((item: OssObjectEntry) => {
@@ -466,10 +478,10 @@ export default function OssBrowserPage({
                     <button
                       onClick={() => void handleCopyUrl(item)}
                       disabled={busy}
-                      title="复制外链"
+                      title={copyFailedKey === item.key ? "复制失败" : copiedKey === item.key ? "已复制" : "复制外链"}
                       className="rounded-lg p-1.5 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 disabled:opacity-40 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
                     >
-                      <Copy className="h-3.5 w-3.5" />
+                      {copiedKey === item.key ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
                     </button>
                     <button
                       onClick={() => void handleRename(item)}
